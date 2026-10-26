@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Uslu Panel</title>
+<link rel="icon" href="../assets/ikon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Instrument+Serif&family=Pacifico&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF8F3; --card: #FFFFFF; --ink: #151515; --muted: #6F6F73; --line: #ECE8DF;
+  --accent: #FFE3A2; --accent-ink: #5A4300; --good: #2E9E5B; --bad: #D9534F; --bar: #151515; --bar-soft: #E8E2D4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141413; --card: #1E1E1C; --ink: #F3F1EC; --muted: #A3A19B; --line: #2E2D2A;
+    --accent: #FFE3A2; --accent-ink: #5A4300; --bar: #F3F1EC; --bar-soft: #3A3934;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Geist, system-ui, sans-serif; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.logo { font: 32px/1 Pacifico, cursive; }
+.logo small { font: 500 13px Geist, sans-serif; color: var(--muted); margin-left: 8px; }
+h2 { font: 400 30px/1.1 "Instrument Serif", serif; margin: 34px 0 12px; }
+.muted { color: var(--muted); }
+button, select, input { font: inherit; color: inherit; }
+.btn { background: var(--ink); color: var(--bg); border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.ranges { display: flex; gap: 6px; flex-wrap: wrap; }
+.ranges button { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+.ranges button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+.kpi .v { font: 600 30px/1.1 Geist, sans-serif; margin-top: 6px; }
+.kpi .s { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.kpi.hl { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.kpi.hl .s { color: var(--accent-ink); opacity: .8; }
+.two { display: grid; gap: 12px; grid-template-columns: 1.4fr 1fr; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+.funnel .row { display: grid; grid-template-columns: 150px 1fr 64px 72px; gap: 10px; align-items: center; padding: 5px 0; font-size: 14px; }
+.funnel .track { background: var(--bar-soft); border-radius: 6px; height: 14px; overflow: hidden; }
+.funnel .fill { background: var(--bar); height: 100%; border-radius: 6px; }
+.funnel .drop { color: var(--bad); font-size: 12px; text-align: right; }
+.funnel .head { color: var(--muted); font-size: 12px; }
+@media (max-width: 560px) { .funnel .row { grid-template-columns: 96px 1fr 48px; } .funnel .drop { display: none; } }
+.list .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.list .item:last-child { border-bottom: 0; }
+.days { display: flex; align-items: flex-end; gap: 4px; height: 140px; padding-top: 8px; overflow-x: auto; }
+.day { flex: 1 0 18px; position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; padding-bottom: 16px; }
+.day .b { width: 100%; border-radius: 4px 4px 0 0; }
+.day .b.paid { position: absolute; bottom: 16px; left: 0; }
+.day .lbl { position: absolute; bottom: 0; }
+.day .lbl { font-size: 10px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr.u { cursor: pointer; }
+tr.u:hover td { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.scroll { overflow-x: auto; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--accent); display: inline-grid; place-items: center; font-weight: 600; color: var(--accent-ink); }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--bar-soft); white-space: nowrap; }
+.pill.good { background: #DDF3E5; color: #1E6B3E; }
+.pill.warn { background: var(--accent); color: var(--accent-ink); }
+.pill.bad { background: #F8DEDD; color: #8E2E2B; }
+.login { max-width: 420px; margin: 12vh auto; }
+.login input { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); margin: 12px 0; }
+.drawer { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; z-index: 10; }
+.drawer.open { display: block; }
+.drawer .panel { position: absolute; right: 0; top: 0; bottom: 0; width: min(520px, 100%); background: var(--bg); padding: 20px 16px; overflow-y: auto; }
+.tl { list-style: none; padding: 0; margin: 12px 0; }
+.tl li { display: grid; grid-template-columns: 70px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.tl .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.big-photo { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; }
+.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="muted">Yükleniyor…</p></div>
+<div class="drawer" id="drawer"><div class="panel" id="drawerPanel"></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://golwjhezedbrcxwxwsqq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_udiXhEZeW3vEelTWH8XF6Q_Pkcq_LlG';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const app = document.getElementById('app');
+let range = localGet('range') || '7';
+
+const STEP = {
+  welcome: 'Karşılama', name: 'İsim', photo: 'Fotoğraf', age: 'Yaş', insightAge: 'Bilgi: yaş', breed: 'Irk',
+  origin: 'Nereden geldi', arrival: 'Ne zaman geldi', home: 'Ev', household: 'Hane', problems: 'Sorunlar',
+  frequency: 'Sıklık', redFlag: 'Hırlama sorusu', safety: 'Güvenlik soruları', insightMethod: 'Bilgi: yöntem',
+  goal: 'Hedef', minutes: 'Günlük süre', insightShort: 'Bilgi: kısa dersler', routine: 'Rutin', rewards: 'Ödüller',
+  microchip: 'Mikroçip', insightOwner: 'Bilgi: sahip', building: 'Plan hazırlanıyor', story: 'Hikâye',
+  summary: 'Plan özeti', notifications: 'Bildirim izni'
+};
+const SURVEY = { fiyat: 'Fiyat yüksek', deneme: 'Önce denemek istiyor', emin_degil: 'Emin değil', sonra: 'Sonra alacak', diger: 'Başka sebep', gecti: 'Cevap vermedi' };
+const RESULT = { success: 'tamamlandı', cancelled: 'vazgeçti', pending: 'onay bekliyor', failed: 'hata' };
+const AGE = { puppy0to4: 'Yavru (0-4 ay)', puppy4to6: 'Yavru (4-6 ay)', adolescent: 'Ergen', adult: 'Yetişkin', senior: 'Yaşlı' };
+
+function localGet(k) { try { return localStorage.getItem('uslu-panel-' + k); } catch { return null; } }
+function localSet(k, v) { try { localStorage.setItem('uslu-panel-' + k, v); } catch {} }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function pct(a, b) { return b ? Math.round(a * 100 / b) + '%' : '–'; }
+function fmtDate(d) { return new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+function fmtTime(d) { return new Date(d).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function bounds() {
+  const to = new Date(Date.now() + 60_000);
+  const from = range === 'all' ? new Date('2026-01-01') : range === '1' ? new Date(new Date().setHours(0, 0, 0, 0)) : new Date(Date.now() - Number(range) * 86400_000);
+  return { p_from: from.toISOString(), p_to: to.toISOString() };
+}
+
+// `?demo` shows made-up numbers so the layout can be checked without signing in
+const DEMO = new URLSearchParams(location.search).has('demo');
+function demoData(name, args) {
+  const steps = Object.keys(STEP);
+  let n = 1000;
+  const funnel = steps.map((st, i) => { n = Math.round(n * (st === 'photo' ? 0.9 : st === 'problems' ? 0.93 : 0.975)); return { step: st, step_index: i, reached: n, median_seconds: 4 + (i % 5) * 3 }; });
+  const names = ['Paşa', 'Fıstık', 'Boncuk', 'Karamel', 'Zeytin', 'Lokum', 'Tarçın', 'Pamuk'];
+  const statuses = ['Abone', 'Ödeme ekranında kaldı', 'Satın almaya bastı, tamamlamadı', "Onboarding'de kaldı: problems", 'Ödeme ekranında kaldı', 'Abone', "Onboarding'de kaldı: photo", 'Ödeme ekranında kaldı'];
+  const users = names.map((nm, i) => ({ install_id: crypto.randomUUID(), dog_name: nm, dog_age: ['puppy0to4', 'adult', 'adolescent', 'senior'][i % 4],
+    dog_problems: 'tuvalet,havlama', photo_path: null, steps_done: [25, 25, 25, 10, 25, 25, 2, 25][i], onboarding_done: ![3, 6].includes(i),
+    paywall_views: [1, 3, 2, 0, 1, 1, 0, 2][i], purchase_taps: [1, 0, 1, 0, 0, 1, 0, 0][i], purchased: statuses[i] === 'Abone',
+    survey: ['', 'fiyat', 'deneme', '', 'sonra', '', '', 'emin_degil'][i], status: statuses[i], device: 'iphone', app_version: '1.0',
+    first_seen: new Date(Date.now() - i * 3_600_000 * 7).toISOString() }));
+  const days = [...Array(14)].map((_, i) => { const d = new Date(Date.now() - (13 - i) * 86400_000); const ins = 40 + Math.round(Math.sin(i) * 12 + i * 3); return { day: d.toISOString().slice(0, 10), installs: ins, paywall_viewed: Math.round(ins * 0.7), purchased: Math.round(ins * 0.07) }; });
+  return {
+    panel_overview: { installs: 1000, active: 1180, onboarding_started: 962, onboarding_done: n, paywall_viewed: n, purchase_started: Math.round(n * 0.22), purchased: Math.round(n * 0.09), restored: 4, purchase_cancelled: 61, purchase_failed: 3, att_authorized: 318, att_answered: 701 },
+    panel_funnel: funnel,
+    panel_dropoff: [{ step: 'photo', installs: 96 }, { step: 'problems', installs: 61 }, { step: 'breed', installs: 33 }, { step: 'safety', installs: 21 }],
+    panel_daily: days,
+    panel_survey: [{ answer: 'fiyat', installs: 84 }, { answer: 'deneme', installs: 61 }, { answer: 'emin_degil', installs: 38 }, { answer: 'sonra', installs: 22 }, { answer: 'diger', installs: 9 }],
+    panel_variants: [{ variant: 'kisisel', viewed: 352, started: 81, purchased: 33 }, { variant: 'karsilastirma', viewed: 344, started: 70, purchased: 28 }],
+    panel_users: users,
+    panel_user_events: [
+      { created_at: new Date(Date.now() - 900_000).toISOString(), name: 'app_open', props: { first: 'true' } },
+      { created_at: new Date(Date.now() - 880_000).toISOString(), name: 'ob_step', props: { step: 'name', index: '1', total: '25' } },
+      { created_at: new Date(Date.now() - 860_000).toISOString(), name: 'ob_step', props: { step: 'photo', index: '2', total: '25' } },
+      { created_at: new Date(Date.now() - 600_000).toISOString(), name: 'ob_complete', props: {} },
+      { created_at: new Date(Date.now() - 590_000).toISOString(), name: 'dog_profile', props: { name: 'Paşa', age: 'adult', breed: 'Melez', problems: 'tuvalet,havlama' } },
+      { created_at: new Date(Date.now() - 580_000).toISOString(), name: 'paywall_view', props: { variant: 'kisisel' } },
+      { created_at: new Date(Date.now() - 560_000).toISOString(), name: 'purchase_start', props: { plan: 'quarterly' } },
+      { created_at: new Date(Date.now() - 550_000).toISOString(), name: 'purchase_result', props: { plan: 'quarterly', result: 'cancelled' } },
+      { created_at: new Date(Date.now() - 548_000).toISOString(), name: 'survey_answer', props: { answer: 'fiyat' } },
+    ],
+  }[name];
+}
+
+async function start() {
+  if (DEMO) { renderShell('örnek veri'); load(); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return renderLogin();
+  renderShell(session.user.email);
+  load();
+}
+
+function renderLogin(msg = '') {
+  app.innerHTML = `<div class="login card">
+    <div class="logo">Uslu <small>panel</small></div>
+    <p class="muted">Yönetici e-postanı yaz, sana bir giriş bağlantısı gönderelim.</p>
+    <input id="email" type="email" placeholder="ornek@protrom.com" autocomplete="email">
+    <button class="btn" id="send">Giriş bağlantısı gönder</button>
+    <p id="msg" class="muted">${esc(msg)}</p></div>`;
+  document.getElementById('send').onclick = async () => {
+    const email = document.getElementById('email').value.trim();
+    if (!email) return;
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+    document.getElementById('msg').textContent = error ? 'Gönderilemedi: ' + error.message : 'Bağlantı gönderildi. E-postanı kontrol et.';
+  };
+}
+
+function renderShell(email) {
+  const opts = [['1', 'Bugün'], ['7', '7 gün'], ['30', '30 gün'], ['90', '90 gün'], ['all', 'Tümü']];
+  app.innerHTML = `<header>
+      <div class="logo">Uslu <small>panel</small></div>
+      <div class="ranges">${opts.map(([v, l]) => `<button data-r="${v}" class="${v === range ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div><span class="muted" style="font-size:13px">${esc(email)}</span> <button class="btn ghost" id="out">Çıkış</button></div>
+    </header>
+    <div id="body"><p class="muted">Veriler yükleniyor…</p></div>`;
+  app.querySelectorAll('.ranges button').forEach(b => b.onclick = () => { range = b.dataset.r; localSet('range', range); renderShell(email); load(); });
+  document.getElementById('out').onclick = async () => { await sb.auth.signOut(); renderLogin(); };
+}
+
+async function rpc(name, args) {
+  if (DEMO) return demoData(name, args);
+  const { data, error } = await sb.rpc(name, args);
+  if (error) throw new Error(error.message === 'not allowed' ? 'Bu e-posta panel yöneticisi değil.' : error.message);
+  return data;
+}
+
+async function load() {
+  const body = document.getElementById('body');
+  const b = bounds();
+  try {
+    const [o, funnel, drop, daily, survey, variants, users] = await Promise.all([
+      rpc('panel_overview', b), rpc('panel_funnel', b), rpc('panel_dropoff', b), rpc('panel_daily', b),
+      rpc('panel_survey', b), rpc('panel_variants', b), rpc('panel_users', { ...b, p_limit: 300 })
+    ]);
+    body.innerHTML = kpis(o) + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}${surveyView(survey)}</div></div>`
+      + dailyView(daily) + variantView(variants) + usersView(users);
+    await fillPhotos(users);
+    body.querySelectorAll('tr.u').forEach(tr => tr.onclick = () => openUser(users.find(u => u.install_id === tr.dataset.id)));
+  } catch (e) {
+    body.innerHTML = `<p class="err">${esc(e.message)}</p>`;
+  }
+}
+
+function kpis(o) {
+  const k = (label, v, s, hl) => `<div class="card kpi ${hl ? 'hl' : ''}"><div class="muted" style="${hl ? 'color:inherit' : ''}">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  return `<div class="grid">
+    ${k('Kurulum', o.installs, `${o.active} aktif kişi`)}
+    ${k('Onboarding başlayan', o.onboarding_started, pct(o.onboarding_started, o.installs) + ' kurulumların')}
+    ${k('Onboarding biten', o.onboarding_done, pct(o.onboarding_done, o.onboarding_started) + ' başlayanların')}
+    ${k('Ödeme ekranını gören', o.paywall_viewed, pct(o.paywall_viewed, o.installs) + ' kurulumların')}
+    ${k('Satın almaya basan', o.purchase_started, pct(o.purchase_started, o.paywall_viewed) + ' görenlerin')}
+    ${k('Abone olan', o.purchased, pct(o.purchased, o.paywall_viewed) + ' ödeme ekranını görenlerin', true)}
+    ${k('Apple ekranında vazgeçme', o.purchase_cancelled, o.purchase_failed + ' hata')}
+    ${k('Takip izni veren', pct(o.att_authorized, o.att_answered), `${o.att_answered} kişiye soruldu`)}
+  </div>`;
+}
+
+function funnelView(rows, o) {
+  if (!rows.length) return `<h2>Onboarding hunisi</h2><div class="card muted">Henüz veri yok.</div>`;
+  const top = Math.max(...rows.map(r => r.reached));
+  const all = [...rows, { step: '__paywall', reached: o.paywall_viewed }, { step: '__bought', reached: o.purchased }];
+  let prev = null;
+  const lines = all.map(r => {
+    const label = r.step === '__paywall' ? 'Ödeme ekranı' : r.step === '__bought' ? 'Abone' : (STEP[r.step] || r.step);
+    const drop = prev ? Math.round((1 - r.reached / Math.max(prev, 1)) * 100) : 0;
+    prev = r.reached;
+    const secs = r.median_seconds != null ? Math.round(r.median_seconds) + ' sn' : '';
+    return `<div class="row"><div>${esc(label)}</div><div class="track"><div class="fill" style="width:${top ? r.reached * 100 / top : 0}%"></div></div>
+      <div style="text-align:right;font-variant-numeric:tabular-nums">${r.reached}</div><div class="drop">${drop > 0 ? '−' + drop + '%' : ''} <span class="muted">${secs}</span></div></div>`;
+  }).join('');
+  return `<h2>Onboarding hunisi</h2><div class="card funnel"><div class="row head"><div>Adım</div><div>Ulaşan kişi</div><div style="text-align:right">Kişi</div><div style="text-align:right">Kayıp · süre</div></div>${lines}</div>`;
+}
+
+function dropView(rows) {
+  const items = rows.length ? rows.map(r => `<div class="item"><span>${esc(STEP[r.step] || r.step)}</span><strong>${r.installs}</strong></div>`).join('') : '<p class="muted">Takılan yok.</p>';
+  return `<h2>En çok nerede bırakıyorlar?</h2><div class="card list">${items}</div>`;
+}
+
+function surveyView(rows) {
+  const total = rows.reduce((a, r) => a + Number(r.installs), 0);
+  const items = rows.length ? rows.map(r => `<div class="item"><span>${esc(SURVEY[r.answer] || r.answer)}</span><span><strong>${r.installs}</strong> <span class="muted">${pct(r.installs, total)}</span></span></div>`).join('') : '<p class="muted">Henüz cevap yok.</p>';
+  return `<h2>Neden almadılar?</h2><div class="card list">${items}</div>`;
+}
+
+function dailyView(rows) {
+  if (!rows.length) return '';
+  const max = Math.max(1, ...rows.map(r => Number(r.installs)));
+  const bars = rows.map(r => `<div class="day" title="${r.day}: ${r.installs} kurulum, ${r.paywall_viewed} ödeme ekranı, ${r.purchased} abone">
+      <div class="b" style="height:${Number(r.installs) * 100 / max}%;background:var(--bar-soft)"></div>
+      <div class="b paid" style="height:calc((100% - 16px) * ${Number(r.purchased) / max});background:var(--good)"></div>
+      <div class="lbl">${r.day.slice(8, 10)}</div></div>`).join('');
+  return `<h2>Günlük kurulum ve abonelik</h2><div class="card"><div class="days">${bars}</div><p class="muted" style="font-size:12px;margin:8px 0 0">Gri: kurulum · Yeşil: abone</p></div>`;
+}
+
+function variantView(rows) {
+  if (!rows.length) return '';
+  const tr = rows.map(r => `<tr><td>${esc(r.variant)}</td><td>${r.viewed}</td><td>${r.started} <span class="muted">${pct(r.started, r.viewed)}</span></td><td><strong>${r.purchased}</strong> <span class="muted">${pct(r.purchased, r.viewed)}</span></td></tr>`).join('');
+  return `<h2>Ödeme ekranı tasarımları</h2><div class="card scroll"><table><tr><th>Tasarım</th><th>Gören</th><th>Satın almaya basan</th><th>Abone</th></tr>${tr}</table></div>`;
+}
+
+function statusPill(u) {
+  const cls = u.purchased ? 'good' : u.purchase_taps > 0 ? 'warn' : u.paywall_views > 0 ? 'warn' : u.onboarding_done ? '' : 'bad';
+  return `<span class="pill ${cls}">${esc(u.status)}</span>`;
+}
+
+function usersView(users) {
+  if (!users.length) return `<h2>Kullanıcılar</h2><div class="card muted">Bu aralıkta kurulum yok.</div>`;
+  const tr = users.map(u => `<tr class="u" data-id="${u.install_id}">
+      <td><span class="avatar" data-photo="${esc(u.photo_path || '')}">${esc((u.dog_name || '?').slice(0, 1).toUpperCase())}</span></td>
+      <td><strong>${esc(u.dog_name || 'İsimsiz')}</strong><div class="muted" style="font-size:12px">${esc(AGE[u.dog_age] || u.dog_age || '')}</div></td>
+      <td>${statusPill(u)}</td>
+      <td>${u.steps_done} adım</td>
+      <td>${u.paywall_views || 0} kez</td>
+      <td>${esc(SURVEY[u.survey] || '')}</td>
+      <td class="muted">${fmtDate(u.first_seen)}</td>
+      <td class="muted">${esc(u.device || '')}</td></tr>`).join('');
+  return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi</span></h2>
+    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Durum</th><th>Onboarding</th><th>Ödeme ekranı</th><th>Neden almadı</th><th>İlk açılış</th><th>Cihaz</th></tr>${tr}</table></div>`;
+}
+
+async function signedUrl(path) {
+  if (!path || DEMO) return null;
+  const { data } = await sb.storage.from('dog-photos').createSignedUrl(path, 3600);
+  return data?.signedUrl || null;
+}
+
+async function fillPhotos(users) {
+  const els = [...document.querySelectorAll('.avatar[data-photo]')].filter(e => e.dataset.photo);
+  await Promise.all(els.map(async el => {
+    const url = await signedUrl(el.dataset.photo);
+    if (url) el.outerHTML = `<img class="avatar" src="${url}" alt="">`;
+  }));
+}
+
+function describe(e) {
+  const p = e.props || {};
+  switch (e.name) {
+    case 'app_open': return p.first === 'true' ? 'Uygulamayı ilk kez açtı' : 'Uygulamayı açtı';
+    case 'ob_step': return `Onboarding: <strong>${esc(STEP[p.step] || p.step)}</strong> <span class="muted">(${Number(p.index) + 1}/${p.total})</span>`;
+    case 'notif_result': return 'Bildirim izni: ' + ({ true: 'verdi', false: 'vermedi', skipped: '“Şimdi değil”' }[p.granted] || p.granted);
+    case 'att_result': return 'Takip izni: ' + ({ authorized: 'verdi', denied: 'vermedi' }[p.status] || p.status);
+    case 'ob_complete': return '<strong>Onboarding\'i bitirdi</strong>';
+    case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(AGE[p.age] || p.age)} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
+    case 'dog_photo': return 'Profil fotoğrafı yükledi';
+    case 'paywall_view': return `<strong>Ödeme ekranını gördü</strong> <span class="muted">(${esc(p.variant)})</span>`;
+    case 'paywall_plan': return 'Plan seçti: ' + (p.plan === 'monthly' ? 'aylık' : '3 aylık');
+    case 'purchase_start': return 'Satın almaya bastı: ' + (p.plan === 'monthly' ? 'aylık' : '3 aylık');
+    case 'purchase_result': return `<strong>Satın alma ${esc(RESULT[p.result] || p.result)}</strong>${p.error ? ' <span class="muted">' + esc(p.error) + '</span>' : ''}`;
+    case 'restore_result': return 'Geri yükleme: ' + (p.success === 'true' ? 'başarılı' : 'abonelik yok');
+    case 'paywall_leave': return `Ödeme ekranındayken uygulamadan çıktı <span class="muted">(${esc(p.seconds)} sn)</span>`;
+    case 'survey_shown': return '“Neden şimdi değil?” sorusu gösterildi';
+    case 'survey_answer': return 'Cevap: <strong>' + esc(SURVEY[p.answer] || p.answer) + '</strong>';
+    case 'lesson_open': return 'Ders açtı: ' + esc(p.lesson);
+    case 'lesson_complete': return 'Ders bitirdi: ' + esc(p.lesson) + ` <span class="muted">(${esc(p.count)}. ders)</span>`;
+    default: return esc(e.name);
+  }
+}
+
+async function openUser(u) {
+  const drawer = document.getElementById('drawer');
+  const panel = document.getElementById('drawerPanel');
+  drawer.classList.add('open');
+  panel.innerHTML = '<p class="muted">Yükleniyor…</p>';
+  const [events, photo] = await Promise.all([rpc('panel_user_events', { p_install: u.install_id }), signedUrl(u.photo_path)]);
+  let day = '';
+  const items = events.map(e => {
+    const d = new Date(e.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+    const head = d !== day ? `<li style="display:block;border:0;padding-top:16px"><strong>${d}</strong></li>` : '';
+    day = d;
+    return head + `<li><span class="t">${fmtTime(e.created_at)}</span><span>${describe(e)}</span></li>`;
+  }).join('');
+  panel.innerHTML = `<button class="btn ghost" id="close">Kapat</button>
+    <div style="display:flex;gap:16px;align-items:center;margin-top:16px">
+      ${photo ? `<img class="big-photo" src="${photo}" alt="">` : `<span class="avatar" style="width:72px;height:72px;font-size:28px">${esc((u.dog_name || '?').slice(0, 1))}</span>`}
+      <div><div style="font:400 30px/1.1 'Instrument Serif',serif">${esc(u.dog_name || 'İsimsiz')}</div>
+        <div class="muted">${esc(AGE[u.dog_age] || '')} ${u.dog_problems ? '· ' + esc(u.dog_problems) : ''}</div>
+        <div style="margin-top:6px">${statusPill(u)}</div></div>
+    </div>
+    <p class="muted" style="font-size:12px">Destek kimliği: ${esc(u.install_id.slice(0, 8))} · ${esc(u.device || '')} · ${esc(u.app_version || '')}</p>
+    <ul class="tl">${items}</ul>`;
+  document.getElementById('close').onclick = () => drawer.classList.remove('open');
+}
+document.getElementById('drawer').onclick = e => { if (e.target.id === 'drawer') e.currentTarget.classList.remove('open'); };
+
+sb.auth.onAuthStateChange((event) => { if (event === 'SIGNED_IN') start(); });
+start();
+</script>
+</body>
+</html>
