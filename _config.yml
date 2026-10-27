@@ -1,0 +1,4 @@
+# GitHub Pages: publish only the built site, not the article sources or the generator
+exclude:
+  - blog-src
+  - build_blog.py

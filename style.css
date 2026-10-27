@@ -148,3 +148,14 @@ footer a:hover { color: var(--ink); }
   .band { margin: 0 8px; border-radius: 36px; }
   .float { width: 70px; }
 }
+
+/* Latest blog posts on the homepage, filled by build_blog.py */
+.blog-son { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px; }
+.blog-son a { display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: var(--ink); background: var(--c, var(--kart));
+  border-radius: var(--radius); padding: 28px 26px 30px; min-height: 230px; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+.blog-son a:hover { transform: translateY(-6px) rotate(-.6deg); }
+.blog-son img { width: 46px; height: 46px; }
+.blog-son b { font-family: Instrument; font-weight: 400; font-size: 28px; line-height: 1.08; }
+.blog-son span { color: var(--ink-2); font-size: 15px; margin-top: auto; }
+.btn.outline { box-shadow: inset 0 0 0 1.5px var(--ink); }
+@media (max-width: 860px) { .blog-son { grid-template-columns: 1fr; } .blog-son a { min-height: 0; } }

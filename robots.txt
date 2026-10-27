@@ -1,0 +1,17 @@
+# Uslu: everyone, including AI assistants, may read and cite the blog.
+User-agent: *
+Allow: /
+Disallow: /panel/
+
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /panel/
+
+Sitemap: https://usluapp.co/sitemap.xml
