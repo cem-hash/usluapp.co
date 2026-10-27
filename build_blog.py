@@ -385,7 +385,7 @@ def index_page(posts, cat=None):
            'inLanguage': 'tr-TR', 'publisher': ORG,
            'blogPost' if not cat else 'hasPart': [{'@type': 'BlogPosting', 'headline': p['title'], 'url': f'{SITE}/blog/{p["slug"]}/',
                                                     'datePublished': p['date'].isoformat()} for p in shown]}]
-    return head(title, desc, url, f'{SITE}/blog/og/_blog.png', ''.join(jsonld(x) for x in ld)) + f'''
+    return head(title, desc, url, f'{SITE}/blog/og/blog.png', ''.join(jsonld(x) for x in ld)) + f'''
 <main class="blog-index">
   <div class="b-hero">
     <div class="wrap">
@@ -479,7 +479,7 @@ def og_images(posts):
     os.makedirs(os.path.join(OUT, 'og'), exist_ok=True)
     fonts = os.path.join(WEB, 'assets', 'fonts')
     items = [(p['slug'], p['title'], CATS[p['category']], POSES[p['category']]) for p in posts]
-    items.append(('_blog', 'Köpek eğitimi blogu', ('Uslu Blog', '#FFE3A2', 'kemik'), 'fistik_onden_oturuyor_gulen'))
+    items.append(('blog', 'Köpek eğitimi blogu', ('Uslu Blog', '#FFE3A2', 'kemik'), 'fistik_onden_oturuyor_gulen'))
     for slug, title, (cname, color, icon), pose in items:
         page = f'''<!doctype html><meta charset="utf-8"><style>
 @font-face{{font-family:I;src:url(file://{fonts}/InstrumentSerif-Regular.ttf)}}
