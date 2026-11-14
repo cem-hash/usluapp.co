@@ -207,7 +207,7 @@ async function load() {
       rpc('panel_survey', b), rpc('panel_variants', b), rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b)
     ]);
     // Uslu is free since 1.2.0: usage first, the old paywall numbers at the bottom
-    body.innerHTML = summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + onboardingKpis(o)
+    body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + onboardingKpis(o)
       + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}</div></div>`
       + usersView(users, usage) + feedbackView(usage)
       + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
@@ -215,6 +215,7 @@ async function load() {
       + `<h2 style="margin-top:40px">Satış (1.2.0 öncesi, Uslu ücretliyken)</h2>` + kpis(o) + `<div class="two"><div>${surveyView(survey)}</div><div>${variantView(variants)}</div></div>`;
     bindSummary();
     bindPush();
+    startLive(users);
     await fillPhotos(users);
     body.querySelectorAll('tr.u').forEach(tr => tr.onclick = () => openUser(users.find(u => u.install_id === tr.dataset.id)));
   } catch (e) {
@@ -224,11 +225,24 @@ async function load() {
 
 // Usage since Uslu went free (1.2.0): opens, owner profiles, suggestions, health log entries and opened reminders.
 // Admins can read the events table directly, so these need no panel_* function.
-const USAGE = ['app_open', 'app_active', 'owner_profile', 'owner_photo', 'feedback', 'health_log', 'notif_open', 'dog_profile', 'consent', 'push_token'];
+const USAGE = ['app_open', 'app_active', 'owner_profile', 'owner_photo', 'feedback', 'health_log', 'notif_open', 'dog_profile', 'consent', 'push_token', 'ping', 'session_end'];
 const GENDER = { female: 'Kadın', male: 'Erkek', skip: '–' };
 const INCOME = { '<25k': '< 25 bin', '25-50k': '25–50 bin', '50-100k': '50–100 bin', '100k+': '100 bin +', skip: '–' };
 const BUDGET = { '<1000': '< 1.000', '1000-2500': '1.000–2.500', '2500-5000': '2.500–5.000', '5000+': '5.000 +' };
 const LOG = { walk: 'Yürüyüş', potty_out: 'Dışarıya tuvalet', potty_in: 'Eve tuvalet', food: 'Mama', weight: 'Kilo', symptom: 'Belirti' };
+
+function demoToday() {
+  const users = demoData('panel_users');
+  const at = m => new Date(Date.now() - m * 60_000).toISOString();
+  const ids = ['iPhone16,2', 'iPhone15,2', 'iPhone14,5', 'iPhone17,1', 'iPhone13,2', 'iPhone16,1'];
+  const ev = [];
+  users.slice(0, 6).forEach((u, i) => {
+    if (i < 2) ev.push({ install_id: u.install_id, name: 'ping', props: {}, created_at: at(1 + i), device: ids[i] });
+    else ev.push({ install_id: u.install_id, name: 'session_end', props: { seconds: String(180 + i * 95) }, created_at: at(30 + i * 20), device: ids[i] });
+    ev.push({ install_id: u.install_id, name: 'app_active', props: {}, created_at: at(40 + i * 20), device: ids[i] });
+  });
+  return ev.sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
 
 function demoUsage() {
   const users = demoData('panel_users');
@@ -238,7 +252,8 @@ function demoUsage() {
   users.forEach((u, i) => {
     ev.push({ install_id: u.install_id, name: 'dog_profile', props: { name: u.dog_name }, created_at: at(40 + i) });
     if (owners[i]) { const [n, g, a, inc, bud] = owners[i]; ev.push({ install_id: u.install_id, name: 'owner_profile', props: { owner_name: n, gender: g, age: a, income: inc, budget: bud }, created_at: at(40 + i) }); }
-    for (let k = 0; k < 8 - i; k++) ev.push({ install_id: u.install_id, name: 'app_active', props: {}, created_at: at(k * 9 + i * 3) });
+    for (let k = 0; k < 8 - i; k++) ev.push({ install_id: u.install_id, name: 'app_active', props: {}, created_at: at(k * 9 + i * 3), device: ['iPhone16,2', 'iPhone15,2', 'iPhone14,5', 'iPhone17,1', 'iPhone13,2'][i % 5] });
+    for (let k = 0; k < 5 - (i % 3); k++) ev.push({ install_id: u.install_id, name: 'session_end', props: { seconds: String(120 + 60 * ((i + k) % 7)) }, created_at: at(k * 9 + i * 3) });
     for (let k = 0; k < 6 - (i % 4); k++) ev.push({ install_id: u.install_id, name: 'health_log', props: { type: 'walk', hour: String([8, 8, 19, 20, 7, 18][k % 6]), minutes: '25', source: 'app' }, created_at: at(k * 20 + i) });
     for (let k = 0; k < 3; k++) ev.push({ install_id: u.install_id, name: 'health_log', props: { type: 'potty_out', hour: '9', source: 'widget' }, created_at: at(k * 15) });
     if (i < 4) ev.push({ install_id: u.install_id, name: 'push_token', props: { env: 'production' }, created_at: at(39 + i) });
@@ -254,7 +269,7 @@ async function usageEvents(b) {
   if (DEMO) return demoUsage();
   const all = [];
   for (let from = 0; from < 20000; from += 1000) {
-    const { data, error } = await sb.from('events').select('install_id,name,props,created_at')
+    const { data, error } = await sb.from('events').select('install_id,name,props,created_at,device')
       .in('name', USAGE).gte('created_at', b.p_from).lt('created_at', b.p_to)
       .order('created_at', { ascending: false }).range(from, from + 999);
     if (error) throw new Error(error.message);
@@ -262,6 +277,75 @@ async function usageEvents(b) {
     if (data.length < 1000) break;
   }
   return all;
+}
+
+// Phone model identifiers (sent since 1.2.0) to names; builds before 1.2.0 sent only "iphone" or "ipad".
+const PHONES = { 'iPhone10,1': '8', 'iPhone10,4': '8', 'iPhone10,2': '8 Plus', 'iPhone10,5': '8 Plus', 'iPhone10,3': 'X', 'iPhone10,6': 'X',
+  'iPhone11,2': 'XS', 'iPhone11,4': 'XS Max', 'iPhone11,6': 'XS Max', 'iPhone11,8': 'XR', 'iPhone12,1': '11', 'iPhone12,3': '11 Pro',
+  'iPhone12,5': '11 Pro Max', 'iPhone12,8': 'SE (2. nesil)', 'iPhone13,1': '12 mini', 'iPhone13,2': '12', 'iPhone13,3': '12 Pro',
+  'iPhone13,4': '12 Pro Max', 'iPhone14,4': '13 mini', 'iPhone14,5': '13', 'iPhone14,2': '13 Pro', 'iPhone14,3': '13 Pro Max',
+  'iPhone14,6': 'SE (3. nesil)', 'iPhone14,7': '14', 'iPhone14,8': '14 Plus', 'iPhone15,2': '14 Pro', 'iPhone15,3': '14 Pro Max',
+  'iPhone15,4': '15', 'iPhone15,5': '15 Plus', 'iPhone16,1': '15 Pro', 'iPhone16,2': '15 Pro Max', 'iPhone17,3': '16', 'iPhone17,4': '16 Plus',
+  'iPhone17,1': '16 Pro', 'iPhone17,2': '16 Pro Max', 'iPhone17,5': '16e', 'iPhone18,3': '17', 'iPhone18,1': '17 Pro', 'iPhone18,2': '17 Pro Max', 'iPhone18,4': 'Air' };
+function phone(id) {
+  if (!id) return '–';
+  if (PHONES[id]) return 'iPhone ' + PHONES[id];
+  if (id === 'iphone') return 'iPhone';
+  if (id === 'ipad' || id.startsWith('iPad')) return 'iPad';
+  return id;
+}
+function dur(sec) {
+  sec = Math.round(sec || 0);
+  if (!sec) return '–';
+  if (sec < 60) return sec + ' sn';
+  const m = Math.round(sec / 60);
+  return m < 60 ? m + ' dk' : Math.floor(m / 60) + ' sa ' + (m % 60) + ' dk';
+}
+
+// Şu an ve bugün: today's opens, pings (every 2 minutes while Uslu is open) and visit lengths, independent of the range.
+async function todayEvents() {
+  if (DEMO) return demoToday();
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const all = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await sb.from('events').select('install_id,name,props,created_at,device')
+      .in('name', ['app_open', 'app_active', 'ping', 'session_end']).gte('created_at', start.toISOString())
+      .order('created_at', { ascending: false }).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    all.push(...data);
+    if (data.length < 1000) break;
+  }
+  return all;
+}
+
+function liveView(ev, users) {
+  const last = {};
+  for (const e of ev) if (!last[e.install_id]) last[e.install_id] = e; // newest first
+  const now = Object.values(last).filter(e => e.name !== 'session_end' && Date.now() - new Date(e.created_at) < 3.5 * 60_000);
+  const visitors = Object.keys(last).length;
+  const ends = ev.filter(e => e.name === 'session_end').map(e => Number(e.props?.seconds || 0));
+  const total = ends.reduce((a, b) => a + b, 0);
+  const names = Object.fromEntries(users.map(u => [u.install_id, u.dog_name]));
+  const models = {};
+  for (const e of Object.values(last)) { const n = phone(e.device); models[n] = (models[n] || 0) + 1; }
+  const top = Object.entries(models).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, c]) => `${esc(n)} (${c})`).join(', ');
+  const k = (label, v, s, hl) => `<div class="card kpi${hl ? ' hl' : ''}"><div class="muted">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  return `<div id="live"><h2>Şu an <span class="muted" style="font:500 14px Geist">her dakika yenilenir</span></h2><div class="grid">
+    ${k('Şu an Uslu’da', now.length, now.length ? now.slice(0, 4).map(e => esc(names[e.install_id] || 'İsimsiz')).join(', ') : 'Şu an kimse yok', true)}
+    ${k('Bugün giren', visitors, 'gece yarısından beri açan kişi')}
+    ${k('Bugün geçirilen süre', dur(total), ends.length ? `ziyaret başına ortalama ${dur(total / ends.length)}` : 'henüz kapanan ziyaret yok')}
+    ${k('Bugünkü telefonlar', Object.keys(models).length, top || '–')}
+  </div></div>`;
+}
+
+let liveTimer = null;
+function startLive(users) {
+  clearInterval(liveTimer);
+  liveTimer = setInterval(async () => {
+    const el = document.getElementById('live');
+    if (!el) return clearInterval(liveTimer);
+    try { el.outerHTML = liveView(await todayEvents(), users); } catch { /* keep the last numbers */ }
+  }, 60_000);
 }
 
 function usageKpis(ev) {
@@ -275,6 +359,8 @@ function usageKpis(ev) {
     ${k('Seçili aralıkta aktif', new Set(opens.map(e => e.install_id)).size, opens.length + ' açılış')}
     ${k('Kayıt girilen', ev.filter(e => e.name === 'health_log').length, walks.length + ' yürüyüş, ' + new Set(walks.map(e => e.install_id)).size + ' kişi')}
     ${k('Açılan bildirim', ev.filter(e => e.name === 'notif_open').length, new Set(ev.filter(e => e.name === 'notif_open').map(e => e.install_id)).size + ' kişi')}
+    ${(() => { const s = ev.filter(e => e.name === 'session_end').map(e => Number(e.props?.seconds || 0)); const t = s.reduce((a, b) => a + b, 0);
+       return k('Uslu’da geçen süre', dur(t), s.length ? `${s.length} ziyaret, ortalama ${dur(t / s.length)}` : 'süre 1.2.0 ile ölçülüyor'); })()}
     ${k('Öneri', ev.filter(e => e.name === 'feedback').length, 'Ayarlar > Öneride bulun')}
     ${(() => { const seen = new Set(); const c = ev.filter(e => e.name === 'consent' && !seen.has(e.install_id) && seen.add(e.install_id));
        return k('KVKK onayı', c.length, c.filter(e => e.props?.profile === 'yes').length + ' kişi profil rızası verdi'); })()}
@@ -472,10 +558,12 @@ function statusPill(u) {
 // Per install from the usage events: owner name, last time the app was opened, walks, other entries, opened reminders.
 function activity(usage) {
   const a = {};
-  const get = id => a[id] || (a[id] = { last: null, opens: 0, walks: 0, logs: 0, notifs: 0, owner: null, feedback: 0, consent: null, ownerPhoto: null });
+  const get = id => a[id] || (a[id] = { last: null, opens: 0, walks: 0, logs: 0, notifs: 0, owner: null, feedback: 0, consent: null, ownerPhoto: null, seconds: 0, visits: 0, model: null });
   for (const e of usage) {
     const x = get(e.install_id);
-    if (e.name === 'app_open' || e.name === 'app_active') { x.opens++; if (!x.last || e.created_at > x.last) x.last = e.created_at; }
+    if (!x.model && e.device) x.model = e.device;
+    if (e.name === 'app_open' || e.name === 'app_active' || e.name === 'ping') { if (e.name !== 'ping') x.opens++; if (!x.last || e.created_at > x.last) x.last = e.created_at; }
+    else if (e.name === 'session_end') { x.seconds += Number(e.props?.seconds || 0); x.visits++; }
     else if (e.name === 'health_log') { e.props?.type === 'walk' ? x.walks++ : x.logs++; }
     else if (e.name === 'notif_open') x.notifs++;
     else if (e.name === 'owner_profile' && !x.owner) x.owner = e.props || {};
@@ -511,6 +599,8 @@ function usersView(users, usage = []) {
       <td>${esc(o.owner_name || '–')}<div class="muted" style="font-size:12px">${esc([GENDER[o.gender], o.age].filter(v => v && v !== '–').join(' · '))}</div></td>
       <td><span class="pill ${live ? 'good' : ''}">${ago(x.last)}</span></td>
       <td>${x.opens || 0}</td>
+      <td>${dur(x.seconds)}</td>
+      <td class="muted" style="white-space:nowrap">${esc(phone(x.model || u.device))}</td>
       <td>${x.walks || 0}</td>
       <td>${x.logs || 0}</td>
       <td>${x.notifs || 0}</td>
@@ -518,7 +608,7 @@ function usersView(users, usage = []) {
       <td>${u.onboarding_done ? '✓' : u.steps_done + ' adım'}</td>
       <td class="muted">${fmtDate(u.first_seen)}</td></tr>`; }).join('');
   return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi · satıra tıkla, tüm geçmişi gör</span></h2>
-    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
+    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Süre</th><th>Telefon</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
 }
 
 // Bildirim gönder: the send-push function (analytics/functions/send-push) delivers through Apple's push service.
@@ -587,6 +677,8 @@ function describe(e) {
     case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(AGE[p.age] || p.age)} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
     case 'dog_photo': return 'Profil fotoğrafı yükledi';
     case 'push_token': return 'Panel bildirimlerine açık';
+    case 'session_end': return `Uygulamadan çıktı · ${dur(Number(p.seconds))} kaldı`;
+    case 'ping': return 'Uygulamada';
     case 'paywall_view': return `<strong>Ödeme ekranını gördü</strong> <span class="muted">(${esc(p.variant)})</span>`;
     case 'paywall_plan': return 'Plan seçti: ' + (p.plan === 'monthly' ? 'aylık' : '3 aylık');
     case 'purchase_start': return 'Satın almaya bastı: ' + (p.plan === 'monthly' ? 'aylık' : '3 aylık');
@@ -616,7 +708,7 @@ async function openUser(u) {
   const [events, photo] = await Promise.all([rpc('panel_user_events', { p_install: u.install_id }), signedUrl(u.photo_path)]);
   const ownerPhoto = await signedUrl(events.find(e => e.name === 'owner_photo')?.props?.path);
   let day = '';
-  const items = events.map(e => {
+  const items = events.filter(e => e.name !== 'ping').map(e => {
     const d = new Date(e.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
     const head = d !== day ? `<li style="display:block;border:0;padding-top:16px"><strong>${d}</strong></li>` : '';
     day = d;
