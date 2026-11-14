@@ -65,6 +65,9 @@ tr.u:hover td { background: color-mix(in srgb, var(--accent) 25%, transparent); 
 .avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--accent); display: inline-grid; place-items: center; font-weight: 600; color: var(--accent-ink); }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--bar-soft); white-space: nowrap; }
 .pill.good { background: #DDF3E5; color: #1E6B3E; }
+.push .row { display: grid; grid-template-columns: 70px 1fr; gap: 10px; align-items: start; margin-bottom: 10px; }
+.push .row label { color: var(--muted); font-size: 13px; padding-top: 10px; }
+.push input, .push select, .push textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); font: inherit; color: inherit; }
 .pill.warn { background: var(--accent); color: var(--accent-ink); }
 .pill.bad { background: #F8DEDD; color: #8E2E2B; }
 .login { max-width: 420px; margin: 12vh auto; }
@@ -96,7 +99,7 @@ const STEP = {
   origin: 'Nereden geldi', arrival: 'Ne zaman geldi', home: 'Ev', household: 'Hane', problems: 'Sorunlar',
   frequency: 'Sıklık', redFlag: 'Hırlama sorusu', safety: 'Güvenlik soruları', insightMethod: 'Bilgi: yöntem',
   goal: 'Hedef', minutes: 'Günlük süre', insightShort: 'Bilgi: kısa dersler', routine: 'Rutin', rewards: 'Ödüller',
-  microchip: 'Mikroçip', insightOwner: 'Bilgi: sahip', building: 'Plan hazırlanıyor', story: 'Hikâye',
+  microchip: 'Mikroçip', ownerName: 'Sahip: ad', ownerPhoto: 'Sahip: fotoğraf', ownerGender: 'Sahip: cinsiyet', ownerAge: 'Sahip: yaş', ownerIncome: 'Sahip: gelir', ownerBudget: 'Sahip: köpek bütçesi', meals: 'Öğün saatleri', outings: 'Dışarı çıkış saatleri', insightOwner: 'Bilgi: sahip', building: 'Plan hazırlanıyor', story: 'Hikâye',
   summary: 'Plan özeti', notifications: 'Bildirim izni'
 };
 const SURVEY = { fiyat: 'Fiyat yüksek', deneme: 'Önce denemek istiyor', emin_degil: 'Emin değil', sonra: 'Sonra alacak', diger: 'Başka sebep', gecti: 'Cevap vermedi' };
@@ -117,13 +120,15 @@ function bounds() {
 
 // `?demo` shows made-up numbers so the layout can be checked without signing in
 const DEMO = new URLSearchParams(location.search).has('demo');
+let demoUsersCache = null;
 function demoData(name, args) {
   const steps = Object.keys(STEP);
   let n = 1000;
   const funnel = steps.map((st, i) => { n = Math.round(n * (st === 'photo' ? 0.9 : st === 'problems' ? 0.93 : 0.975)); return { step: st, step_index: i, reached: n, median_seconds: 4 + (i % 5) * 3 }; });
   const names = ['Paşa', 'Fıstık', 'Boncuk', 'Karamel', 'Zeytin', 'Lokum', 'Tarçın', 'Pamuk'];
   const statuses = ['Abone', 'Ödeme ekranında kaldı', 'Satın almaya bastı, tamamlamadı', "Onboarding'de kaldı: problems", 'Ödeme ekranında kaldı', 'Abone', "Onboarding'de kaldı: photo", 'Ödeme ekranında kaldı'];
-  const users = names.map((nm, i) => ({ install_id: crypto.randomUUID(), dog_name: nm, dog_age: ['puppy0to4', 'adult', 'adolescent', 'senior'][i % 4],
+  // made once, so the usage demo below matches the same people
+  const users = demoUsersCache ||= names.map((nm, i) => ({ install_id: crypto.randomUUID(), dog_name: nm, dog_age: ['puppy0to4', 'adult', 'adolescent', 'senior'][i % 4],
     dog_problems: 'tuvalet,havlama', photo_path: null, steps_done: [25, 25, 25, 10, 25, 25, 2, 25][i], onboarding_done: ![3, 6].includes(i),
     paywall_views: [1, 3, 2, 0, 1, 1, 0, 2][i], purchase_taps: [1, 0, 1, 0, 0, 1, 0, 0][i], purchased: statuses[i] === 'Abone',
     survey: ['', 'fiyat', 'deneme', '', 'sonra', '', '', 'emin_degil'][i], status: statuses[i], device: 'iphone', app_version: '1.0',
@@ -197,17 +202,208 @@ async function load() {
   const body = document.getElementById('body');
   const b = bounds();
   try {
-    const [o, funnel, drop, daily, survey, variants, users] = await Promise.all([
+    const [o, funnel, drop, daily, survey, variants, users, usage] = await Promise.all([
       rpc('panel_overview', b), rpc('panel_funnel', b), rpc('panel_dropoff', b), rpc('panel_daily', b),
-      rpc('panel_survey', b), rpc('panel_variants', b), rpc('panel_users', { ...b, p_limit: 300 })
+      rpc('panel_survey', b), rpc('panel_variants', b), rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b)
     ]);
-    body.innerHTML = kpis(o) + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}${surveyView(survey)}</div></div>`
-      + dailyView(daily) + variantView(variants) + usersView(users);
+    // Uslu is free since 1.2.0: usage first, the old paywall numbers at the bottom
+    body.innerHTML = summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + onboardingKpis(o)
+      + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}</div></div>`
+      + usersView(users, usage) + feedbackView(usage)
+      + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
+      + ownersView(usage) + dailyView(daily)
+      + `<h2 style="margin-top:40px">Satış (1.2.0 öncesi, Uslu ücretliyken)</h2>` + kpis(o) + `<div class="two"><div>${surveyView(survey)}</div><div>${variantView(variants)}</div></div>`;
+    bindSummary();
+    bindPush();
     await fillPhotos(users);
     body.querySelectorAll('tr.u').forEach(tr => tr.onclick = () => openUser(users.find(u => u.install_id === tr.dataset.id)));
   } catch (e) {
     body.innerHTML = `<p class="err">${esc(e.message)}</p>`;
   }
+}
+
+// Usage since Uslu went free (1.2.0): opens, owner profiles, suggestions, health log entries and opened reminders.
+// Admins can read the events table directly, so these need no panel_* function.
+const USAGE = ['app_open', 'app_active', 'owner_profile', 'owner_photo', 'feedback', 'health_log', 'notif_open', 'dog_profile', 'consent', 'push_token'];
+const GENDER = { female: 'Kadın', male: 'Erkek', skip: '–' };
+const INCOME = { '<25k': '< 25 bin', '25-50k': '25–50 bin', '50-100k': '50–100 bin', '100k+': '100 bin +', skip: '–' };
+const BUDGET = { '<1000': '< 1.000', '1000-2500': '1.000–2.500', '2500-5000': '2.500–5.000', '5000+': '5.000 +' };
+const LOG = { walk: 'Yürüyüş', potty_out: 'Dışarıya tuvalet', potty_in: 'Eve tuvalet', food: 'Mama', weight: 'Kilo', symptom: 'Belirti' };
+
+function demoUsage() {
+  const users = demoData('panel_users');
+  const owners = [['Cem', 'male', '35-44', '50-100k', '2500-5000'], ['Elif', 'female', '25-34', '25-50k', '1000-2500'], ['Mert', 'male', '25-34', '100k+', '5000+'], ['Zeynep', 'female', '18-24', '<25k', '<1000'], ['Ayşe', 'female', '45-54', '50-100k', '2500-5000']];
+  const ev = [];
+  const at = (h) => new Date(Date.now() - h * 3600_000).toISOString();
+  users.forEach((u, i) => {
+    ev.push({ install_id: u.install_id, name: 'dog_profile', props: { name: u.dog_name }, created_at: at(40 + i) });
+    if (owners[i]) { const [n, g, a, inc, bud] = owners[i]; ev.push({ install_id: u.install_id, name: 'owner_profile', props: { owner_name: n, gender: g, age: a, income: inc, budget: bud }, created_at: at(40 + i) }); }
+    for (let k = 0; k < 8 - i; k++) ev.push({ install_id: u.install_id, name: 'app_active', props: {}, created_at: at(k * 9 + i * 3) });
+    for (let k = 0; k < 6 - (i % 4); k++) ev.push({ install_id: u.install_id, name: 'health_log', props: { type: 'walk', hour: String([8, 8, 19, 20, 7, 18][k % 6]), minutes: '25', source: 'app' }, created_at: at(k * 20 + i) });
+    for (let k = 0; k < 3; k++) ev.push({ install_id: u.install_id, name: 'health_log', props: { type: 'potty_out', hour: '9', source: 'widget' }, created_at: at(k * 15) });
+    if (i < 4) ev.push({ install_id: u.install_id, name: 'push_token', props: { env: 'production' }, created_at: at(39 + i) });
+    ev.push({ install_id: u.install_id, name: 'consent', props: { version: '1.0', notice: 'read', profile: i < 5 ? 'yes' : 'no', source: 'onboarding' }, created_at: at(40 + i) });
+    if (i % 2 === 0) ev.push({ install_id: u.install_id, name: 'notif_open', props: { hour: String([19, 20, 8][i % 3]) }, created_at: at(i * 5) });
+  });
+  ev.push({ install_id: users[0].install_id, name: 'feedback', props: { text: 'Yürüyüşleri haritada görmek isterim, bir de kedi versiyonu olsa süper olur.' }, created_at: at(3) });
+  ev.push({ install_id: users[2].install_id, name: 'feedback', props: { text: 'Havlama dersleri çok işe yaradı, daha fazla video eklerseniz sevinirim.' }, created_at: at(20) });
+  return ev.sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+async function usageEvents(b) {
+  if (DEMO) return demoUsage();
+  const all = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await sb.from('events').select('install_id,name,props,created_at')
+      .in('name', USAGE).gte('created_at', b.p_from).lt('created_at', b.p_to)
+      .order('created_at', { ascending: false }).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    all.push(...data);
+    if (data.length < 1000) break;
+  }
+  return all;
+}
+
+function usageKpis(ev) {
+  const opens = ev.filter(e => e.name === 'app_open' || e.name === 'app_active');
+  const since = ms => new Set(opens.filter(e => Date.now() - new Date(e.created_at) < ms).map(e => e.install_id)).size;
+  const walks = ev.filter(e => e.name === 'health_log' && e.props?.type === 'walk');
+  const k = (label, v, s) => `<div class="card kpi"><div class="muted">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  return `<h2>Kullanım</h2><div class="grid">
+    ${k('Bugün aktif', since(86400_000), 'son 24 saatte açan kişi')}
+    ${k('Haftalık aktif', since(7 * 86400_000), 'son 7 günde açan kişi')}
+    ${k('Seçili aralıkta aktif', new Set(opens.map(e => e.install_id)).size, opens.length + ' açılış')}
+    ${k('Kayıt girilen', ev.filter(e => e.name === 'health_log').length, walks.length + ' yürüyüş, ' + new Set(walks.map(e => e.install_id)).size + ' kişi')}
+    ${k('Açılan bildirim', ev.filter(e => e.name === 'notif_open').length, new Set(ev.filter(e => e.name === 'notif_open').map(e => e.install_id)).size + ' kişi')}
+    ${k('Öneri', ev.filter(e => e.name === 'feedback').length, 'Ayarlar > Öneride bulun')}
+    ${(() => { const seen = new Set(); const c = ev.filter(e => e.name === 'consent' && !seen.has(e.install_id) && seen.add(e.install_id));
+       return k('KVKK onayı', c.length, c.filter(e => e.props?.profile === 'yes').length + ' kişi profil rızası verdi'); })()}
+  </div>`;
+}
+
+function dogNames(ev) {
+  const m = {};
+  for (const e of ev) if (e.name === 'dog_profile' && !m[e.install_id]) m[e.install_id] = e.props?.name;
+  return m;
+}
+
+function ownersView(ev) {
+  const seen = new Set(), dogs = dogNames(ev);
+  const rows = ev.filter(e => e.name === 'owner_profile' && !seen.has(e.install_id) && seen.add(e.install_id));
+  if (!rows.length) return `<h2>Sahipler</h2><div class="card muted">Bu aralıkta sahip bilgisi yok.</div>`;
+  const tr = rows.map(e => { const p = e.props || {};
+    return `<tr><td><strong>${esc(p.owner_name || '–')}</strong></td><td>${esc(dogs[e.install_id] || '')}</td><td>${esc(GENDER[p.gender] || '–')}</td>
+      <td>${esc(p.age || '–')}</td><td>${esc(INCOME[p.income] || '–')}</td><td>${esc(BUDGET[p.budget] || '–')}</td><td class="muted">${fmtDate(e.created_at)}</td></tr>`; }).join('');
+  return `<h2>Sahipler <span class="muted" style="font:500 14px Geist">${rows.length} kişi</span></h2>
+    <div class="card scroll"><table><tr><th>Ad</th><th>Köpek</th><th>Cinsiyet</th><th>Yaş</th><th>Aylık gelir (TL)</th><th>Köpek bütçesi (TL)</th><th>Tarih</th></tr>${tr}</table></div>`;
+}
+
+function feedbackView(ev) {
+  const dogs = dogNames(ev);
+  const rows = ev.filter(e => e.name === 'feedback');
+  if (!rows.length) return `<h2>Öneriler</h2><div class="card muted">Henüz öneri yok.</div>`;
+  const items = rows.map(e => `<div class="item" style="display:block"><div>${esc(e.props?.text)}</div>
+      <div class="muted" style="font-size:12px;margin-top:4px">${esc(dogs[e.install_id] || 'İsimsiz')} · ${fmtDate(e.created_at)} · ${esc(e.install_id.slice(0, 8))}</div></div>`).join('');
+  return `<h2>Öneriler <span class="muted" style="font:500 14px Geist">${rows.length}</span></h2><div class="card list">${items}</div>`;
+}
+
+// Which hours people walk their dogs, or open reminders.
+function hoursView(ev, kind) {
+  const rows = kind === 'walk' ? ev.filter(e => e.name === 'health_log' && e.props?.type === 'walk') : ev.filter(e => e.name === 'notif_open');
+  const title = kind === 'walk' ? 'Yürüyüş saatleri' : 'Bildirim açılış saatleri';
+  if (!rows.length) return `<h2>${title}</h2><div class="card muted">Henüz veri yok.</div>`;
+  const by = Array(24).fill(0);
+  rows.forEach(e => by[Number(e.props?.hour) || 0]++);
+  const max = Math.max(1, ...by);
+  const bars = by.map((n, h) => `<div class="day" title="${String(h).padStart(2, '0')}:00 · ${n}"><div class="b" style="height:${n * 100 / max}%;background:var(--bar-soft)"></div><div class="lbl">${h % 3 === 0 ? h : ''}</div></div>`).join('');
+  const peak = by.indexOf(max);
+  const note = `En yoğun saat ${HOUR(peak)}. Bu saatin payı %${Math.round(max * 100 / rows.length)}.`;
+  return `<h2>${title}</h2><div class="card"><div class="days">${bars}</div><p class="muted" style="font-size:13px;margin:8px 0 0">${note}</p></div>`;
+}
+
+// The summary on top: plain sentences worked out from the same numbers as the sections below.
+const HOUR = h => String(h).padStart(2, '0') + ':00';
+function peakHour(rows) {
+  if (!rows.length) return null;
+  const by = Array(24).fill(0);
+  rows.forEach(r => by[r]++);
+  const h = by.indexOf(Math.max(...by));
+  return { hour: h, share: Math.round(by[h] * 100 / rows.length) };
+}
+function mostCommon(values) {
+  const c = {};
+  values.filter(v => v && v !== 'skip').forEach(v => c[v] = (c[v] || 0) + 1);
+  const top = Object.entries(c).sort((a, b) => b[1] - a[1])[0];
+  return top ? { value: top[0], share: Math.round(top[1] * 100 / values.filter(v => v && v !== 'skip').length) } : null;
+}
+
+function insights(ev, o, drop) {
+  const out = [];
+  const opens = ev.filter(e => e.name === 'app_open' || e.name === 'app_active');
+  const day = new Set(opens.filter(e => Date.now() - new Date(e.created_at) < 86400_000).map(e => e.install_id)).size;
+  const week = new Set(opens.filter(e => Date.now() - new Date(e.created_at) < 7 * 86400_000).map(e => e.install_id)).size;
+  if (week) out.push(`Son 7 günde <strong>${week} kişi</strong> Uslu'yu açtı. Son 24 saatte açan kişi sayısı <strong>${day}</strong>.`);
+  const openPeak = peakHour(opens.map(e => new Date(e.created_at).getHours()));
+  if (openPeak) out.push(`Uygulama en çok <strong>${HOUR(openPeak.hour)}</strong> civarında açılıyor. Bu saatin açılışlardaki payı %${openPeak.share}.`);
+  const walks = ev.filter(e => e.name === 'health_log' && e.props?.type === 'walk');
+  const walkPeak = peakHour(walks.map(e => Number(e.props?.hour) || 0));
+  if (walkPeak) {
+    const mins = walks.map(e => Number(e.props?.minutes)).filter(Boolean);
+    const avg = mins.length ? Math.round(mins.reduce((a, b) => a + b, 0) / mins.length) : null;
+    out.push(`Kullanıcılar köpeklerini en çok <strong>${HOUR(walkPeak.hour)}</strong> civarında yürüyüşe çıkarıyor. Bu saatin yürüyüşlerdeki payı %${walkPeak.share}.${avg ? ` Bir yürüyüş ortalama <strong>${avg} dakika</strong> sürüyor.` : ''}`);
+  }
+  const logs = ev.filter(e => e.name === 'health_log');
+  const logTop = mostCommon(logs.map(e => e.props?.type));
+  if (logTop) out.push(`En sık girilen kayıt <strong>${esc((LOG[logTop.value] || logTop.value).toLowerCase())}</strong>, payı %${logTop.share}. Ana ekran widget'ından girilen kayıtların payı %${Math.round(logs.filter(e => e.props?.source === 'widget').length * 100 / logs.length)}.`);
+  const notifPeak = peakHour(ev.filter(e => e.name === 'notif_open').map(e => Number(e.props?.hour) || 0));
+  if (notifPeak) out.push(`Bildirimlere en çok <strong>${HOUR(notifPeak.hour)}</strong> civarında dokunuluyor. Toplu bildirimleri bu saatte göndermek daha iyi sonuç verir.`);
+  if (o && o.onboarding_started) {
+    let line = `Onboarding'i bitirme oranı <strong>%${Math.round(o.onboarding_done * 100 / o.onboarding_started)}</strong>.`;
+    if (drop && drop.length) line += ` Kullanıcılar en çok <strong>${esc(STEP[drop[0].step] || drop[0].step)}</strong> adımında bırakıyor; bu adımda bırakan kişi sayısı ${drop[0].installs}.`;
+    out.push(line);
+  }
+  const owners = ev.filter(e => e.name === 'owner_profile').map(e => e.props || {});
+  if (owners.length) {
+    const age = mostCommon(owners.map(p => p.age)), budget = mostCommon(owners.map(p => p.budget)), gender = mostCommon(owners.map(p => p.gender));
+    const parts = [];
+    if (age) parts.push(`En kalabalık yaş grubu <strong>${esc(age.value)}</strong>, payı %${age.share}.`);
+    if (gender) parts.push(`En çok görülen cinsiyet <strong>${esc((GENDER[gender.value] || '').toLowerCase())}</strong>, payı %${gender.share}.`);
+    if (budget) parts.push(`En sık köpek bütçesi ayda <strong>${esc(BUDGET[budget.value])} TL</strong>.`);
+    if (parts.length) out.push(`Kendi bilgisini paylaşan sahip sayısı ${owners.length}. ${parts.join(' ')}`);
+  }
+  const fb = ev.filter(e => e.name === 'feedback');
+  if (fb.length) out.push(`<strong>${fb.length} öneri</strong> geldi. En yeni öneri şu: “${esc(String(fb[0].props?.text || '').slice(0, 120))}”`);
+  return out;
+}
+
+// Shown when "Özet çıkar" is pressed, so the page opens on the numbers.
+function summaryView(lines) {
+  const card = lines.length
+    ? `<div class="card list">${lines.map(l => `<div class="item" style="display:block">${l}</div>`).join('')}
+        <p class="muted" style="font-size:12px;margin:8px 0 0">Seçili tarih aralığındaki verilerden otomatik hesaplanır.</p></div>`
+    : `<div class="card muted">Bu aralıkta özet çıkaracak kadar veri yok.</div>`;
+  return `<div style="margin-top:8px"><button class="btn" id="summaryBtn">Özet çıkar</button></div>
+    <div id="summary" hidden><h2>Özet</h2>${card}</div>`;
+}
+
+function bindSummary() {
+  const btn = document.getElementById('summaryBtn');
+  if (!btn) return;
+  btn.onclick = () => {
+    const box = document.getElementById('summary');
+    box.hidden = !box.hidden;
+    btn.textContent = box.hidden ? 'Özet çıkar' : 'Özeti gizle';
+  };
+}
+
+function onboardingKpis(o) {
+  const k = (label, v, s, hl) => `<div class="card kpi ${hl ? 'hl' : ''}"><div class="muted" style="${hl ? 'color:inherit' : ''}">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  return `<h2>Onboarding</h2><div class="grid">
+    ${k('Kurulum', o.installs, 'uygulamayı ilk kez açan')}
+    ${k('Onboarding başlayan', o.onboarding_started, pct(o.onboarding_started, o.installs) + ' kurulumların')}
+    ${k('Onboarding biten', o.onboarding_done, o.onboarding_started - o.onboarding_done + ' kişi yarıda bıraktı')}
+    ${k('Tamamlama oranı', pct(o.onboarding_done, o.onboarding_started), 'başlayanların bitirenleri', true)}
+  </div>`;
 }
 
 function kpis(o) {
@@ -227,7 +423,7 @@ function kpis(o) {
 function funnelView(rows, o) {
   if (!rows.length) return `<h2>Onboarding hunisi</h2><div class="card muted">Henüz veri yok.</div>`;
   const top = Math.max(...rows.map(r => r.reached));
-  const all = [...rows, { step: '__paywall', reached: o.paywall_viewed }, { step: '__bought', reached: o.purchased }];
+  const all = rows;
   let prev = null;
   const lines = all.map(r => {
     const label = r.step === '__paywall' ? 'Ödeme ekranı' : r.step === '__bought' ? 'Abone' : (STEP[r.step] || r.step);
@@ -241,6 +437,7 @@ function funnelView(rows, o) {
 }
 
 function dropView(rows) {
+  // the step where people closed the app and never came back, most first
   const items = rows.length ? rows.map(r => `<div class="item"><span>${esc(STEP[r.step] || r.step)}</span><strong>${r.installs}</strong></div>`).join('') : '<p class="muted">Takılan yok.</p>';
   return `<h2>En çok nerede bırakıyorlar?</h2><div class="card list">${items}</div>`;
 }
@@ -272,19 +469,97 @@ function statusPill(u) {
   return `<span class="pill ${cls}">${esc(u.status)}</span>`;
 }
 
-function usersView(users) {
+// Per install from the usage events: owner name, last time the app was opened, walks, other entries, opened reminders.
+function activity(usage) {
+  const a = {};
+  const get = id => a[id] || (a[id] = { last: null, opens: 0, walks: 0, logs: 0, notifs: 0, owner: null, feedback: 0, consent: null, ownerPhoto: null });
+  for (const e of usage) {
+    const x = get(e.install_id);
+    if (e.name === 'app_open' || e.name === 'app_active') { x.opens++; if (!x.last || e.created_at > x.last) x.last = e.created_at; }
+    else if (e.name === 'health_log') { e.props?.type === 'walk' ? x.walks++ : x.logs++; }
+    else if (e.name === 'notif_open') x.notifs++;
+    else if (e.name === 'owner_profile' && !x.owner) x.owner = e.props || {};
+    else if (e.name === 'feedback') x.feedback++;
+    else if (e.name === 'consent' && !x.consent) x.consent = e.props || {};
+    else if (e.name === 'owner_photo' && !x.ownerPhoto) x.ownerPhoto = e.props?.path;
+  }
+  return a;
+}
+
+// KVKK: notice confirmed (required) and the two optional consents, latest answer first.
+function consentPill(c) {
+  if (!c) return '<span class="pill bad">Onay yok</span>';
+  const yes = k => c[k] === 'yes';
+  const label = yes('profile') ? 'Profil rızası' : 'Yalnız aydınlatma';
+  return `<span class="pill ${yes('profile') ? 'good' : ''}" title="Aydınlatma okundu · profil: ${esc(c.profile || '-')} · sürüm ${esc(c.version || '')}">${label}</span>`;
+}
+
+function ago(d) {
+  if (!d) return '–';
+  const m = (Date.now() - new Date(d)) / 60000;
+  return m < 60 ? Math.max(1, Math.round(m)) + ' dk önce' : m < 1440 ? Math.round(m / 60) + ' sa önce' : Math.round(m / 1440) + ' gün önce';
+}
+
+function usersView(users, usage = []) {
   if (!users.length) return `<h2>Kullanıcılar</h2><div class="card muted">Bu aralıkta kurulum yok.</div>`;
-  const tr = users.map(u => `<tr class="u" data-id="${u.install_id}">
+  const act = activity(usage);
+  const tr = users.map(u => { const x = act[u.install_id] || {}; const o = x.owner || {};
+    const live = x.last && Date.now() - new Date(x.last) < 86400_000;
+    return `<tr class="u" data-id="${u.install_id}">
       <td><span class="avatar" data-photo="${esc(u.photo_path || '')}">${esc((u.dog_name || '?').slice(0, 1).toUpperCase())}</span></td>
       <td><strong>${esc(u.dog_name || 'İsimsiz')}</strong><div class="muted" style="font-size:12px">${esc(AGE[u.dog_age] || u.dog_age || '')}</div></td>
-      <td>${statusPill(u)}</td>
-      <td>${u.steps_done} adım</td>
-      <td>${u.paywall_views || 0} kez</td>
-      <td>${esc(SURVEY[u.survey] || '')}</td>
-      <td class="muted">${fmtDate(u.first_seen)}</td>
-      <td class="muted">${esc(u.device || '')}</td></tr>`).join('');
-  return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi</span></h2>
-    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Durum</th><th>Onboarding</th><th>Ödeme ekranı</th><th>Neden almadı</th><th>İlk açılış</th><th>Cihaz</th></tr>${tr}</table></div>`;
+      <td>${esc(o.owner_name || '–')}<div class="muted" style="font-size:12px">${esc([GENDER[o.gender], o.age].filter(v => v && v !== '–').join(' · '))}</div></td>
+      <td><span class="pill ${live ? 'good' : ''}">${ago(x.last)}</span></td>
+      <td>${x.opens || 0}</td>
+      <td>${x.walks || 0}</td>
+      <td>${x.logs || 0}</td>
+      <td>${x.notifs || 0}</td>
+      <td>${consentPill(x.consent)}</td>
+      <td>${u.onboarding_done ? '✓' : u.steps_done + ' adım'}</td>
+      <td class="muted">${fmtDate(u.first_seen)}</td></tr>`; }).join('');
+  return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi · satıra tıkla, tüm geçmişi gör</span></h2>
+    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
+}
+
+// Bildirim gönder: the send-push function (analytics/functions/send-push) delivers through Apple's push service.
+// Only people who allowed notifications and use 1.2.0 or later have a push token.
+function pushView(users, usage) {
+  const tokens = new Set(usage.filter(e => e.name === 'push_token').map(e => e.install_id));
+  const names = Object.fromEntries(users.map(u => [u.install_id, u.dog_name]));
+  const opts = [...tokens].map(id => `<option value="${id}">${esc(names[id] || 'İsimsiz')} · ${id.slice(0, 8)}</option>`).join('');
+  return `<h2>Bildirim gönder</h2>
+    <div class="card push">
+      <div class="row"><label>Kime</label><select id="pTarget"><option value="all">Bildirim izni veren herkes (${tokens.size} kişi)</option>${opts}</select></div>
+      <div class="row"><label>Başlık</label><input id="pTitle" maxlength="60" placeholder="Örnek: {köpek} seni bekliyor"></div>
+      <div class="row"><label>Mesaj</label><textarea id="pBody" maxlength="180" rows="3" placeholder="Örnek: Bugün 5 dakikalık bir {köpek} dersi yapalım mı?"></textarea></div>
+      <p class="muted" style="font-size:12px;margin:4px 0 12px">{köpek} yerine köpeğin adı, {ad} yerine sahibinin adı yazılır. Bildirim yalnızca 1.2.0 ve sonrasını kullanan, bildirim izni veren kişilere gider.</p>
+      <button class="btn" id="pSend">Gönder</button> <span id="pMsg" class="muted"></span>
+    </div>`;
+}
+
+function bindPush() {
+  const btn = document.getElementById('pSend'), msg = document.getElementById('pMsg');
+  if (!btn) return;
+  let armed = false;
+  btn.onclick = async () => {
+    const target = document.getElementById('pTarget').value;
+    const title = document.getElementById('pTitle').value.trim(), body = document.getElementById('pBody').value.trim();
+    if (!body) { msg.textContent = 'Önce mesajı yaz.'; return; }
+    if (DEMO) { msg.textContent = 'Demo modunda bildirim gönderilmez.'; return; }
+    if (!armed) {
+      const { data, error } = await sb.functions.invoke('send-push', { body: { title, body, target, dryRun: true } });
+      if (error || data?.error) { msg.textContent = 'Hata: ' + (data?.error || error.message); return; }
+      armed = true; btn.textContent = `${data.recipients} kişiye gönder`; msg.textContent = 'Emin misin? Tekrar bas.';
+      return;
+    }
+    armed = false; btn.disabled = true; msg.textContent = 'Gönderiliyor…';
+    const { data, error } = await sb.functions.invoke('send-push', { body: { title, body, target } });
+    btn.disabled = false; btn.textContent = 'Gönder';
+    if (error || data?.error) { msg.textContent = 'Hata: ' + (data?.error || error.message); return; }
+    const why = Object.entries(data.reasons || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
+    msg.textContent = `${data.sent} kişiye gitti` + (data.failed ? `, ${data.failed} gitmedi (${why})` : '') + '.';
+  };
+  ['pTarget', 'pTitle', 'pBody'].forEach(id => document.getElementById(id).oninput = () => { armed = false; btn.textContent = 'Gönder'; msg.textContent = ''; });
 }
 
 async function signedUrl(path) {
@@ -311,6 +586,7 @@ function describe(e) {
     case 'ob_complete': return '<strong>Onboarding\'i bitirdi</strong>';
     case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(AGE[p.age] || p.age)} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
     case 'dog_photo': return 'Profil fotoğrafı yükledi';
+    case 'push_token': return 'Panel bildirimlerine açık';
     case 'paywall_view': return `<strong>Ödeme ekranını gördü</strong> <span class="muted">(${esc(p.variant)})</span>`;
     case 'paywall_plan': return 'Plan seçti: ' + (p.plan === 'monthly' ? 'aylık' : '3 aylık');
     case 'purchase_start': return 'Satın almaya bastı: ' + (p.plan === 'monthly' ? 'aylık' : '3 aylık');
@@ -320,6 +596,13 @@ function describe(e) {
     case 'survey_shown': return '“Neden şimdi değil?” sorusu gösterildi';
     case 'survey_answer': return 'Cevap: <strong>' + esc(SURVEY[p.answer] || p.answer) + '</strong>';
     case 'lesson_open': return 'Ders açtı: ' + esc(p.lesson);
+    case 'app_active': return 'Uygulamaya döndü';
+    case 'owner_profile': return `Sahip: <strong>${esc(p.owner_name || 'adsız')}</strong> · ${esc(GENDER[p.gender] || '')} ${esc(p.age || '')} · gelir ${esc(INCOME[p.income] || '–')} · bütçe ${esc(BUDGET[p.budget] || '–')}`;
+    case 'feedback': return '<strong>Öneri:</strong> ' + esc(p.text);
+    case 'health_log': return 'Kayıt: ' + esc(LOG[p.type] || p.type) + (p.minutes ? ` (${esc(p.minutes)} dk)` : '') + ` <span class="muted">${esc(p.source === 'widget' ? 'widget' : '')}</span>`;
+    case 'notif_open': return 'Bildirime dokundu';
+    case 'consent': return `<strong>KVKK</strong>: aydınlatma metnini okudu · profil rızası ${p.profile === 'yes' ? 'verdi' : 'vermedi'} <span class="muted">(sürüm ${esc(p.version)}, ${p.source === 'settings' ? 'Ayarlar' : 'kurulum'})</span>`;
+    case 'owner_photo': return 'Kendi fotoğrafını yükledi';
     case 'lesson_complete': return 'Ders bitirdi: ' + esc(p.lesson) + ` <span class="muted">(${esc(p.count)}. ders)</span>`;
     default: return esc(e.name);
   }
@@ -331,6 +614,7 @@ async function openUser(u) {
   drawer.classList.add('open');
   panel.innerHTML = '<p class="muted">Yükleniyor…</p>';
   const [events, photo] = await Promise.all([rpc('panel_user_events', { p_install: u.install_id }), signedUrl(u.photo_path)]);
+  const ownerPhoto = await signedUrl(events.find(e => e.name === 'owner_photo')?.props?.path);
   let day = '';
   const items = events.map(e => {
     const d = new Date(e.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
@@ -345,6 +629,7 @@ async function openUser(u) {
         <div class="muted">${esc(AGE[u.dog_age] || '')} ${u.dog_problems ? '· ' + esc(u.dog_problems) : ''}</div>
         <div style="margin-top:6px">${statusPill(u)}</div></div>
     </div>
+    ${(() => { const o = events.find(e => e.name === 'owner_profile')?.props; return o ? `<p style="margin:12px 0 0">${ownerPhoto ? `<img class="avatar" src="${ownerPhoto}" alt="" style="vertical-align:middle;margin-right:8px">` : ''}Sahip: <strong>${esc(o.owner_name || 'adsız')}</strong> · ${esc(GENDER[o.gender] || '')} ${esc(o.age || '')} · gelir ${esc(INCOME[o.income] || '–')} · köpek bütçesi ${esc(BUDGET[o.budget] || '–')} TL</p>` : ''; })()}
     <p class="muted" style="font-size:12px">Destek kimliği: ${esc(u.install_id.slice(0, 8))} · ${esc(u.device || '')} · ${esc(u.app_version || '')}</p>
     <ul class="tl">${items}</ul>`;
   document.getElementById('close').onclick = () => drawer.classList.remove('open');

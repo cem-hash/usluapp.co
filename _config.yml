@@ -2,3 +2,4 @@
 exclude:
   - blog-src
   - build_blog.py
+  - build_legal.py
