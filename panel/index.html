@@ -118,46 +118,8 @@ function bounds() {
   return { p_from: from.toISOString(), p_to: to.toISOString() };
 }
 
-// `?demo` shows made-up numbers so the layout can be checked without signing in
-const DEMO = new URLSearchParams(location.search).has('demo');
-let demoUsersCache = null;
-function demoData(name, args) {
-  const steps = Object.keys(STEP);
-  let n = 1000;
-  const funnel = steps.map((st, i) => { n = Math.round(n * (st === 'photo' ? 0.9 : st === 'problems' ? 0.93 : 0.975)); return { step: st, step_index: i, reached: n, median_seconds: 4 + (i % 5) * 3 }; });
-  const names = ['Paşa', 'Fıstık', 'Boncuk', 'Karamel', 'Zeytin', 'Lokum', 'Tarçın', 'Pamuk'];
-  const statuses = ['Abone', 'Ödeme ekranında kaldı', 'Satın almaya bastı, tamamlamadı', "Onboarding'de kaldı: problems", 'Ödeme ekranında kaldı', 'Abone', "Onboarding'de kaldı: photo", 'Ödeme ekranında kaldı'];
-  // made once, so the usage demo below matches the same people
-  const users = demoUsersCache ||= names.map((nm, i) => ({ install_id: crypto.randomUUID(), dog_name: nm, dog_age: ['puppy0to4', 'adult', 'adolescent', 'senior'][i % 4],
-    dog_problems: 'tuvalet,havlama', photo_path: null, steps_done: [25, 25, 25, 10, 25, 25, 2, 25][i], onboarding_done: ![3, 6].includes(i),
-    paywall_views: [1, 3, 2, 0, 1, 1, 0, 2][i], purchase_taps: [1, 0, 1, 0, 0, 1, 0, 0][i], purchased: statuses[i] === 'Abone',
-    survey: ['', 'fiyat', 'deneme', '', 'sonra', '', '', 'emin_degil'][i], status: statuses[i], device: 'iphone', app_version: '1.0',
-    first_seen: new Date(Date.now() - i * 3_600_000 * 7).toISOString() }));
-  const days = [...Array(14)].map((_, i) => { const d = new Date(Date.now() - (13 - i) * 86400_000); const ins = 40 + Math.round(Math.sin(i) * 12 + i * 3); return { day: d.toISOString().slice(0, 10), installs: ins, paywall_viewed: Math.round(ins * 0.7), purchased: Math.round(ins * 0.07) }; });
-  return {
-    panel_overview: { installs: 1000, active: 1180, onboarding_started: 962, onboarding_done: n, paywall_viewed: n, purchase_started: Math.round(n * 0.22), purchased: Math.round(n * 0.09), restored: 4, purchase_cancelled: 61, purchase_failed: 3, att_authorized: 318, att_answered: 701 },
-    panel_funnel: funnel,
-    panel_dropoff: [{ step: 'photo', installs: 96 }, { step: 'problems', installs: 61 }, { step: 'breed', installs: 33 }, { step: 'safety', installs: 21 }],
-    panel_daily: days,
-    panel_survey: [{ answer: 'fiyat', installs: 84 }, { answer: 'deneme', installs: 61 }, { answer: 'emin_degil', installs: 38 }, { answer: 'sonra', installs: 22 }, { answer: 'diger', installs: 9 }],
-    panel_variants: [{ variant: 'kisisel', viewed: 352, started: 81, purchased: 33 }, { variant: 'karsilastirma', viewed: 344, started: 70, purchased: 28 }],
-    panel_users: users,
-    panel_user_events: [
-      { created_at: new Date(Date.now() - 900_000).toISOString(), name: 'app_open', props: { first: 'true' } },
-      { created_at: new Date(Date.now() - 880_000).toISOString(), name: 'ob_step', props: { step: 'name', index: '1', total: '25' } },
-      { created_at: new Date(Date.now() - 860_000).toISOString(), name: 'ob_step', props: { step: 'photo', index: '2', total: '25' } },
-      { created_at: new Date(Date.now() - 600_000).toISOString(), name: 'ob_complete', props: {} },
-      { created_at: new Date(Date.now() - 590_000).toISOString(), name: 'dog_profile', props: { name: 'Paşa', age: 'adult', breed: 'Melez', problems: 'tuvalet,havlama' } },
-      { created_at: new Date(Date.now() - 580_000).toISOString(), name: 'paywall_view', props: { variant: 'kisisel' } },
-      { created_at: new Date(Date.now() - 560_000).toISOString(), name: 'purchase_start', props: { plan: 'quarterly' } },
-      { created_at: new Date(Date.now() - 550_000).toISOString(), name: 'purchase_result', props: { plan: 'quarterly', result: 'cancelled' } },
-      { created_at: new Date(Date.now() - 548_000).toISOString(), name: 'survey_answer', props: { answer: 'fiyat' } },
-    ],
-  }[name];
-}
 
 async function start() {
-  if (DEMO) { renderShell('örnek veri'); load(); return; }
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return renderLogin();
   renderShell(session.user.email);
@@ -192,7 +154,6 @@ function renderShell(email) {
 }
 
 async function rpc(name, args) {
-  if (DEMO) return demoData(name, args);
   const { data, error } = await sb.rpc(name, args);
   if (error) throw new Error(error.message === 'not allowed' ? 'Bu e-posta panel yöneticisi değil.' : error.message);
   return data;
@@ -202,17 +163,16 @@ async function load() {
   const body = document.getElementById('body');
   const b = bounds();
   try {
-    const [o, funnel, drop, daily, survey, variants, users, usage] = await Promise.all([
+    const [o, funnel, drop, daily, users, usage] = await Promise.all([
       rpc('panel_overview', b), rpc('panel_funnel', b), rpc('panel_dropoff', b), rpc('panel_daily', b),
-      rpc('panel_survey', b), rpc('panel_variants', b), rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b)
+      rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b)
     ]);
-    // Uslu is free since 1.2.0: usage first, the old paywall numbers at the bottom
+    // Uslu is free since 1.2.0: the panel shows usage only
     body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + onboardingKpis(o)
       + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}</div></div>`
       + usersView(users, usage) + feedbackView(usage)
       + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
-      + ownersView(usage) + dailyView(daily)
-      + `<h2 style="margin-top:40px">Satış (1.2.0 öncesi, Uslu ücretliyken)</h2>` + kpis(o) + `<div class="two"><div>${surveyView(survey)}</div><div>${variantView(variants)}</div></div>`;
+      + ownersView(usage) + dailyView(daily);
     bindSummary();
     bindPush();
     startLive(users);
@@ -231,42 +191,9 @@ const INCOME = { '<25k': '< 25 bin', '25-50k': '25–50 bin', '50-100k': '50–1
 const BUDGET = { '<1000': '< 1.000', '1000-2500': '1.000–2.500', '2500-5000': '2.500–5.000', '5000+': '5.000 +' };
 const LOG = { walk: 'Yürüyüş', potty_out: 'Dışarıya tuvalet', potty_in: 'Eve tuvalet', food: 'Mama', weight: 'Kilo', symptom: 'Belirti' };
 
-function demoToday() {
-  const users = demoData('panel_users');
-  const at = m => new Date(Date.now() - m * 60_000).toISOString();
-  const ids = ['iPhone16,2', 'iPhone15,2', 'iPhone14,5', 'iPhone17,1', 'iPhone13,2', 'iPhone16,1'];
-  const ev = [];
-  users.slice(0, 6).forEach((u, i) => {
-    if (i < 2) ev.push({ install_id: u.install_id, name: 'ping', props: {}, created_at: at(1 + i), device: ids[i] });
-    else ev.push({ install_id: u.install_id, name: 'session_end', props: { seconds: String(180 + i * 95) }, created_at: at(30 + i * 20), device: ids[i] });
-    ev.push({ install_id: u.install_id, name: 'app_active', props: {}, created_at: at(40 + i * 20), device: ids[i] });
-  });
-  return ev.sort((a, b) => b.created_at.localeCompare(a.created_at));
-}
 
-function demoUsage() {
-  const users = demoData('panel_users');
-  const owners = [['Cem', 'male', '35-44', '50-100k', '2500-5000'], ['Elif', 'female', '25-34', '25-50k', '1000-2500'], ['Mert', 'male', '25-34', '100k+', '5000+'], ['Zeynep', 'female', '18-24', '<25k', '<1000'], ['Ayşe', 'female', '45-54', '50-100k', '2500-5000']];
-  const ev = [];
-  const at = (h) => new Date(Date.now() - h * 3600_000).toISOString();
-  users.forEach((u, i) => {
-    ev.push({ install_id: u.install_id, name: 'dog_profile', props: { name: u.dog_name }, created_at: at(40 + i) });
-    if (owners[i]) { const [n, g, a, inc, bud] = owners[i]; ev.push({ install_id: u.install_id, name: 'owner_profile', props: { owner_name: n, gender: g, age: a, income: inc, budget: bud }, created_at: at(40 + i) }); }
-    for (let k = 0; k < 8 - i; k++) ev.push({ install_id: u.install_id, name: 'app_active', props: {}, created_at: at(k * 9 + i * 3), device: ['iPhone16,2', 'iPhone15,2', 'iPhone14,5', 'iPhone17,1', 'iPhone13,2'][i % 5] });
-    for (let k = 0; k < 5 - (i % 3); k++) ev.push({ install_id: u.install_id, name: 'session_end', props: { seconds: String(120 + 60 * ((i + k) % 7)) }, created_at: at(k * 9 + i * 3) });
-    for (let k = 0; k < 6 - (i % 4); k++) ev.push({ install_id: u.install_id, name: 'health_log', props: { type: 'walk', hour: String([8, 8, 19, 20, 7, 18][k % 6]), minutes: '25', source: 'app' }, created_at: at(k * 20 + i) });
-    for (let k = 0; k < 3; k++) ev.push({ install_id: u.install_id, name: 'health_log', props: { type: 'potty_out', hour: '9', source: 'widget' }, created_at: at(k * 15) });
-    if (i < 4) ev.push({ install_id: u.install_id, name: 'push_token', props: { env: 'production' }, created_at: at(39 + i) });
-    ev.push({ install_id: u.install_id, name: 'consent', props: { version: '1.0', notice: 'read', profile: i < 5 ? 'yes' : 'no', source: 'onboarding' }, created_at: at(40 + i) });
-    if (i % 2 === 0) ev.push({ install_id: u.install_id, name: 'notif_open', props: { hour: String([19, 20, 8][i % 3]) }, created_at: at(i * 5) });
-  });
-  ev.push({ install_id: users[0].install_id, name: 'feedback', props: { text: 'Yürüyüşleri haritada görmek isterim, bir de kedi versiyonu olsa süper olur.' }, created_at: at(3) });
-  ev.push({ install_id: users[2].install_id, name: 'feedback', props: { text: 'Havlama dersleri çok işe yaradı, daha fazla video eklerseniz sevinirim.' }, created_at: at(20) });
-  return ev.sort((a, b) => b.created_at.localeCompare(a.created_at));
-}
 
 async function usageEvents(b) {
-  if (DEMO) return demoUsage();
   const all = [];
   for (let from = 0; from < 20000; from += 1000) {
     const { data, error } = await sb.from('events').select('install_id,name,props,created_at,device')
@@ -304,7 +231,6 @@ function dur(sec) {
 
 // Şu an ve bugün: today's opens, pings (every 2 minutes while Uslu is open) and visit lengths, independent of the range.
 async function todayEvents() {
-  if (DEMO) return demoToday();
   const start = new Date(); start.setHours(0, 0, 0, 0);
   const all = [];
   for (let from = 0; from < 20000; from += 1000) {
@@ -492,19 +418,6 @@ function onboardingKpis(o) {
   </div>`;
 }
 
-function kpis(o) {
-  const k = (label, v, s, hl) => `<div class="card kpi ${hl ? 'hl' : ''}"><div class="muted" style="${hl ? 'color:inherit' : ''}">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
-  return `<div class="grid">
-    ${k('Kurulum', o.installs, `${o.active} aktif kişi`)}
-    ${k('Onboarding başlayan', o.onboarding_started, pct(o.onboarding_started, o.installs) + ' kurulumların')}
-    ${k('Onboarding biten', o.onboarding_done, pct(o.onboarding_done, o.onboarding_started) + ' başlayanların')}
-    ${k('Ödeme ekranını gören', o.paywall_viewed, pct(o.paywall_viewed, o.installs) + ' kurulumların')}
-    ${k('Satın almaya basan', o.purchase_started, pct(o.purchase_started, o.paywall_viewed) + ' görenlerin')}
-    ${k('Abone olan', o.purchased, pct(o.purchased, o.paywall_viewed) + ' ödeme ekranını görenlerin', true)}
-    ${k('Apple ekranında vazgeçme', o.purchase_cancelled, o.purchase_failed + ' hata')}
-    ${k('Takip izni veren', pct(o.att_authorized, o.att_answered), `${o.att_answered} kişiye soruldu`)}
-  </div>`;
-}
 
 function funnelView(rows, o) {
   if (!rows.length) return `<h2>Onboarding hunisi</h2><div class="card muted">Henüz veri yok.</div>`;
@@ -528,11 +441,6 @@ function dropView(rows) {
   return `<h2>En çok nerede bırakıyorlar?</h2><div class="card list">${items}</div>`;
 }
 
-function surveyView(rows) {
-  const total = rows.reduce((a, r) => a + Number(r.installs), 0);
-  const items = rows.length ? rows.map(r => `<div class="item"><span>${esc(SURVEY[r.answer] || r.answer)}</span><span><strong>${r.installs}</strong> <span class="muted">${pct(r.installs, total)}</span></span></div>`).join('') : '<p class="muted">Henüz cevap yok.</p>';
-  return `<h2>Neden almadılar?</h2><div class="card list">${items}</div>`;
-}
 
 function dailyView(rows) {
   if (!rows.length) return '';
@@ -544,11 +452,6 @@ function dailyView(rows) {
   return `<h2>Günlük kurulum ve abonelik</h2><div class="card"><div class="days">${bars}</div><p class="muted" style="font-size:12px;margin:8px 0 0">Gri: kurulum · Yeşil: abone</p></div>`;
 }
 
-function variantView(rows) {
-  if (!rows.length) return '';
-  const tr = rows.map(r => `<tr><td>${esc(r.variant)}</td><td>${r.viewed}</td><td>${r.started} <span class="muted">${pct(r.started, r.viewed)}</span></td><td><strong>${r.purchased}</strong> <span class="muted">${pct(r.purchased, r.viewed)}</span></td></tr>`).join('');
-  return `<h2>Ödeme ekranı tasarımları</h2><div class="card scroll"><table><tr><th>Tasarım</th><th>Gören</th><th>Satın almaya basan</th><th>Abone</th></tr>${tr}</table></div>`;
-}
 
 function statusPill(u) {
   const cls = u.purchased ? 'good' : u.purchase_taps > 0 ? 'warn' : u.paywall_views > 0 ? 'warn' : u.onboarding_done ? '' : 'bad';
@@ -635,7 +538,6 @@ function bindPush() {
     const target = document.getElementById('pTarget').value;
     const title = document.getElementById('pTitle').value.trim(), body = document.getElementById('pBody').value.trim();
     if (!body) { msg.textContent = 'Önce mesajı yaz.'; return; }
-    if (DEMO) { msg.textContent = 'Demo modunda bildirim gönderilmez.'; return; }
     if (!armed) {
       const { data, error } = await sb.functions.invoke('send-push', { body: { title, body, target, dryRun: true } });
       if (error || data?.error) { msg.textContent = 'Hata: ' + (data?.error || error.message); return; }
@@ -653,7 +555,7 @@ function bindPush() {
 }
 
 async function signedUrl(path) {
-  if (!path || DEMO) return null;
+  if (!path) return null;
   const { data } = await sb.storage.from('dog-photos').createSignedUrl(path, 3600);
   return data?.signedUrl || null;
 }
