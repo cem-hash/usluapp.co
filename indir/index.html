@@ -6,9 +6,26 @@
 <title>Uslu'yu indir</title>
 <meta name="robots" content="noindex">
 <link rel="canonical" href="https://apps.apple.com/tr/app/id6826392423">
-<meta http-equiv="refresh" content="0; url=https://apps.apple.com/tr/app/id6826392423">
-<script>location.replace('https://apps.apple.com/tr/app/id6826392423')</script>
 <link rel="icon" href="/assets/ikon.svg" type="image/svg+xml">
+<script>
+// usluapp.co/indir?d=PASA7K is a friend's invite link from Uslu: the click is counted for that invite code
+// (an anonymous "invite_click" with a random id, nothing about the visitor), then the App Store opens.
+(function () {
+  var store = 'https://apps.apple.com/tr/app/id6826392423';
+  var go = function () { location.replace(store); };
+  var code = (new URLSearchParams(location.search).get('d') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  if (!code || !window.fetch) return go();
+  var id = (crypto.randomUUID && crypto.randomUUID()) || 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'.replace(/x/g, function () { return (Math.random() * 16 | 0).toString(16); });
+  var key = 'sb_publishable_udiXhEZeW3vEelTWH8XF6Q_Pkcq_LlG';
+  fetch('https://golwjhezedbrcxwxwsqq.supabase.co/rest/v1/events', {
+    method: 'POST', keepalive: true,
+    headers: { 'Content-Type': 'application/json', 'apikey': key, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ install_id: id, name: 'invite_click', props: { code: code, ios: /iPhone|iPad/.test(navigator.userAgent) ? 'yes' : 'no' } })
+  }).catch(function () {}).then(go);
+  setTimeout(go, 1200);
+})();
+</script>
+<noscript><meta http-equiv="refresh" content="0; url=https://apps.apple.com/tr/app/id6826392423"></noscript>
 </head>
 <body>
 <p>App Store açılıyor… Açılmazsa <a href="https://apps.apple.com/tr/app/id6826392423">buraya dokun</a>.</p>

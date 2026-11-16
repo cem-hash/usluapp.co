@@ -99,7 +99,7 @@ const STEP = {
   origin: 'Nereden geldi', arrival: 'Ne zaman geldi', home: 'Ev', household: 'Hane', problems: 'Sorunlar',
   frequency: 'Sıklık', redFlag: 'Hırlama sorusu', safety: 'Güvenlik soruları', insightMethod: 'Bilgi: yöntem',
   goal: 'Hedef', minutes: 'Günlük süre', insightShort: 'Bilgi: kısa dersler', routine: 'Rutin', rewards: 'Ödüller',
-  microchip: 'Mikroçip', ownerName: 'Sahip: ad', ownerPhoto: 'Sahip: fotoğraf', ownerGender: 'Sahip: cinsiyet', ownerAge: 'Sahip: yaş', ownerIncome: 'Sahip: gelir', ownerBudget: 'Sahip: köpek bütçesi', meals: 'Öğün saatleri', outings: 'Dışarı çıkış saatleri', insightOwner: 'Bilgi: sahip', building: 'Plan hazırlanıyor', story: 'Hikâye',
+  microchip: 'Mikroçip', ownerName: 'Sahip: ad', ownerPhoto: 'Sahip: fotoğraf', ownerGender: 'Sahip: cinsiyet', ownerAge: 'Sahip: yaş', ownerIncome: 'Sahip: gelir', ownerBudget: 'Sahip: köpek bütçesi', meals: 'Öğün saatleri', outings: 'Dışarı çıkış saatleri', insightOwner: 'Bilgi: sahip', inviteCode: 'Davet kodu', building: 'Plan hazırlanıyor', story: 'Hikâye',
   summary: 'Plan özeti', notifications: 'Bildirim izni'
 };
 const SURVEY = { fiyat: 'Fiyat yüksek', deneme: 'Önce denemek istiyor', emin_degil: 'Emin değil', sonra: 'Sonra alacak', diger: 'Başka sebep', gecti: 'Cevap vermedi' };
@@ -167,10 +167,11 @@ async function load() {
       rpc('panel_overview', b), rpc('panel_funnel', b), rpc('panel_dropoff', b), rpc('panel_daily', b),
       rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b)
     ]);
+    const invites = await inviteEvents();
     // Uslu is free since 1.2.0: the panel shows usage only
     body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + onboardingKpis(o)
       + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}</div></div>`
-      + usersView(users, usage) + feedbackView(usage)
+      + usersView(users, usage, invites) + inviteView(users, usage, invites) + feedbackView(usage)
       + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
       + ownersView(usage) + dailyView(daily);
     bindSummary();
@@ -308,6 +309,74 @@ function ownersView(ev) {
       <td>${esc(p.age || '–')}</td><td>${esc(INCOME[p.income] || '–')}</td><td>${esc(BUDGET[p.budget] || '–')}</td><td class="muted">${fmtDate(e.created_at)}</td></tr>`; }).join('');
   return `<h2>Sahipler <span class="muted" style="font:500 14px Geist">${rows.length} kişi</span></h2>
     <div class="card scroll"><table><tr><th>Ad</th><th>Köpek</th><th>Cinsiyet</th><th>Yaş</th><th>Aylık gelir (TL)</th><th>Köpek bütçesi (TL)</th><th>Tarih</th></tr>${tr}</table></div>`;
+}
+
+// Davetler: "invite_share" from the home card (who sent, through which app), "invite_click" from usluapp.co/indir?d=CODE
+// and "invite_redeem" when a new user types the code in onboarding. All time, not the selected range: invites are few
+// and a link can be clicked long after it was sent. Codes starting with TEST are test rows.
+async function inviteEvents() {
+  const all = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await sb.from('events').select('install_id,name,props,created_at')
+      .in('name', ['invite_share', 'invite_click', 'invite_redeem'])
+      .order('created_at', { ascending: false }).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    all.push(...data.filter(e => !String(e.props?.code || '').startsWith('TEST')));
+    if (data.length < 1000) break;
+  }
+  return all;
+}
+
+// per inviter: their code, sends (with apps), clicks and installs on their link
+function inviteStats(invites) {
+  const byCode = {}, byInstall = {};
+  const get = code => byCode[code] || (byCode[code] = { code, install: null, sends: 0, opens: 0, clicks: 0, installs: 0, channels: {}, last: null });
+  for (const e of invites) {
+    const code = String(e.props?.code || '').toUpperCase();
+    if (!code) continue;
+    const x = get(code);
+    if (e.name === 'invite_share') {
+      x.install = x.install || e.install_id; byInstall[e.install_id] = x; x.opens++;
+      if (e.props?.sent === 'yes') { x.sends++; const c = e.props?.channel || '?'; x.channels[c] = (x.channels[c] || 0) + 1; }
+      if (!x.last || e.created_at > x.last) x.last = e.created_at;
+    } else if (e.name === 'invite_click') x.clicks++;
+    else if (e.name === 'invite_redeem') x.installs++;
+  }
+  return { byCode, byInstall };
+}
+
+function inviteCell(st) {
+  if (!st) return '<span class="muted">–</span>';
+  return `${st.sends} gönderim · ${st.clicks} tık · ${st.installs} kurulum`;
+}
+
+function inviteView(users, usage, invites) {
+  const { byCode } = inviteStats(invites);
+  const rows = Object.values(byCode).filter(x => x.install).sort((a, b) => (b.installs - a.installs) || (b.clicks - a.clicks) || (b.sends - a.sends));
+  const act = activity(usage);
+  const dog = Object.fromEntries(users.map(u => [u.install_id, u.dog_name]));
+  const sum = k => Object.values(byCode).reduce((a, x) => a + x[k], 0);
+  const k = (label, v, s) => `<div class="card kpi"><div class="muted">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  const channels = {};
+  for (const x of rows) for (const [c, n] of Object.entries(x.channels)) channels[c] = (channels[c] || 0) + n;
+  const topCh = Object.entries(channels).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c, n]) => `${esc(c)} (${n})`).join(', ');
+  const unknown = Object.values(byCode).filter(x => !x.install && (x.clicks || x.installs)).length;
+  const tr = rows.slice(0, 50).map(x => {
+    const owner = act[x.install]?.owner?.owner_name;
+    const ch = Object.entries(x.channels).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${esc(c)} ${n}`).join(', ');
+    return `<tr><td><strong>${esc(dog[x.install] || 'İsimsiz')}</strong><div class="muted" style="font-size:12px">${esc(owner || '')}</div></td>
+      <td><span class="pill">${esc(x.code)}</span></td><td>${x.sends}<div class="muted" style="font-size:12px">${x.opens - x.sends ? (x.opens - x.sends) + ' kez vazgeçti' : ''}</div></td>
+      <td class="muted">${ch || '–'}</td><td>${x.clicks}</td><td>${x.installs}</td><td class="muted">${ago(x.last)}</td></tr>`;
+  }).join('');
+  return `<h2>Davetler <span class="muted" style="font:500 14px Geist">tüm zamanlar · “Uslu'yu arkadaşına önermek ister misin?” kartı</span></h2>
+    <div class="grid">
+      ${k('Davet gönderen', rows.filter(x => x.sends).length, 'en az bir kez gönderen kişi')}
+      ${k('Gönderilen davet', sum('sends'), topCh || 'henüz yok')}
+      ${k('Bağlantı tıklaması', sum('clicks'), 'usluapp.co/indir?d=… açılışları')}
+      ${k('Davetle gelen', sum('installs'), 'kurulumda davet kodu yazan' + (unknown ? `, ${unknown} kod eşleşmedi` : ''))}
+    </div>
+    ${rows.length ? `<div class="card scroll" style="margin-top:12px"><table><tr><th>Davet eden</th><th>Kod</th><th>Gönderim</th><th>Uygulama</th><th>Tıklama</th><th>Kurulum</th><th>Son davet</th></tr>${tr}</table></div>`
+      : '<div class="card muted" style="margin-top:12px">Henüz davet gönderilmedi. Kart 1.2.1 ile ana sayfaya geliyor.</div>'}`;
 }
 
 function feedbackView(ev) {
@@ -491,7 +560,8 @@ function ago(d) {
   return m < 60 ? Math.max(1, Math.round(m)) + ' dk önce' : m < 1440 ? Math.round(m / 60) + ' sa önce' : Math.round(m / 1440) + ' gün önce';
 }
 
-function usersView(users, usage = []) {
+function usersView(users, usage = [], invites = []) {
+  const inv = inviteStats(invites).byInstall;
   if (!users.length) return `<h2>Kullanıcılar</h2><div class="card muted">Bu aralıkta kurulum yok.</div>`;
   const act = activity(usage);
   const tr = users.map(u => { const x = act[u.install_id] || {}; const o = x.owner || {};
@@ -507,11 +577,12 @@ function usersView(users, usage = []) {
       <td>${x.walks || 0}</td>
       <td>${x.logs || 0}</td>
       <td>${x.notifs || 0}</td>
+      <td style="white-space:nowrap">${inviteCell(inv[u.install_id])}</td>
       <td>${consentPill(x.consent)}</td>
       <td>${u.onboarding_done ? '✓' : u.steps_done + ' adım'}</td>
       <td class="muted">${fmtDate(u.first_seen)}</td></tr>`; }).join('');
   return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi · satıra tıkla, tüm geçmişi gör</span></h2>
-    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Süre</th><th>Telefon</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
+    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Süre</th><th>Telefon</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th>Davet</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
 }
 
 // Bildirim gönder: the send-push function (analytics/functions/send-push) delivers through Apple's push service.
@@ -579,6 +650,8 @@ function describe(e) {
     case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(AGE[p.age] || p.age)} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
     case 'dog_photo': return 'Profil fotoğrafı yükledi';
     case 'push_token': return 'Panel bildirimlerine açık';
+    case 'invite_share': return p.sent === 'yes' ? `<strong>Davet gönderdi</strong> · ${esc(p.channel)} <span class="muted">(kod ${esc(p.code)})</span>` : 'Davet ekranını açıp kapattı';
+    case 'invite_redeem': return `<strong>Davet koduyla geldi</strong>: ${esc(p.code)}`;
     case 'session_end': return `Uygulamadan çıktı · ${dur(Number(p.seconds))} kaldı`;
     case 'ping': return 'Uygulamada';
     case 'paywall_view': return `<strong>Ödeme ekranını gördü</strong> <span class="muted">(${esc(p.variant)})</span>`;
