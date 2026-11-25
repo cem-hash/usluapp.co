@@ -169,7 +169,7 @@ async function load() {
     ]);
     const invites = await inviteEvents();
     // Uslu is free since 1.2.0: the panel shows usage only
-    body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + onboardingKpis(o)
+    body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + retentionKpis(users, usage) + featureKpis(usage) + onboardingKpis(o)
       + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}</div></div>`
       + usersView(users, usage, invites) + inviteView(users, usage, invites) + feedbackView(usage)
       + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
@@ -186,7 +186,7 @@ async function load() {
 
 // Usage since Uslu went free (1.2.0): opens, owner profiles, suggestions, health log entries and opened reminders.
 // Admins can read the events table directly, so these need no panel_* function.
-const USAGE = ['app_open', 'app_active', 'owner_profile', 'owner_photo', 'feedback', 'health_log', 'notif_open', 'dog_profile', 'consent', 'push_token', 'ping', 'session_end'];
+const USAGE = ['app_open', 'app_active', 'owner_profile', 'owner_photo', 'feedback', 'health_log', 'notif_open', 'dog_profile', 'consent', 'push_token', 'ping', 'session_end', 'tab_view', 'assistant_message', 'widget_state', 'satisfaction'];
 const GENDER = { female: 'Kadın', male: 'Erkek', skip: '–' };
 const INCOME = { '<25k': '< 25 bin', '25-50k': '25–50 bin', '50-100k': '50–100 bin', '100k+': '100 bin +', skip: '–' };
 const BUDGET = { '<1000': '< 1.000', '1000-2500': '1.000–2.500', '2500-5000': '2.500–5.000', '5000+': '5.000 +' };
@@ -273,6 +273,49 @@ function startLive(users) {
     if (!el) return clearInterval(liveTimer);
     try { el.outerHTML = liveView(await todayEvents(), users); } catch { /* keep the last numbers */ }
   }, 60_000);
+}
+
+// Geri dönüş: of the people who finished onboarding in the range, how many opened Uslu again the next day,
+// within 3 days and around day 7. Only people old enough to have had that day count, so new installs do not pull it down.
+function retentionKpis(users, ev) {
+  const dayMs = 86400_000, local = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+  const days = {};
+  for (const e of ev) if (['app_open', 'app_active', 'ping'].includes(e.name)) (days[e.install_id] ||= new Set()).add(local(e.created_at));
+  const done = users.filter(u => u.onboarding_done && u.first_seen);
+  const rate = (from, to) => {
+    const eligible = done.filter(u => Date.now() - local(u.first_seen) >= to * dayMs + dayMs);
+    const back = eligible.filter(u => [...(days[u.install_id] || [])].some(d => { const n = Math.round((d - local(u.first_seen)) / dayMs); return n >= from && n <= to; }));
+    return { n: eligible.length, back: back.length, pct: eligible.length ? Math.round(100 * back.length / eligible.length) : null };
+  };
+  const one = done.filter(u => (days[u.install_id]?.size || 0) <= 1 && Date.now() - local(u.first_seen) >= 2 * dayMs).length;
+  const k = (label, r, s) => `<div class="card kpi${label === 'Ertesi gün' ? ' hl' : ''}"><div class="muted">${label}</div><div class="v">${r.pct === null ? '–' : '%' + r.pct}</div><div class="s">${r.n ? `${r.n} kişiden ${r.back} kişi. ${s}` : 'Henüz yeterli kullanıcı yok.'}</div></div>`;
+  return `<h2>Geri dönüş <span class="muted" style="font:500 14px Geist">onboarding'i bitirenler, seçili aralık</span></h2><div class="grid">
+    ${k('Ertesi gün', rate(1, 1), 'Ertesi gün tekrar açtı.')}
+    ${k('İlk 3 gün', rate(1, 3), 'Sonraki 3 günde en az bir kez açtı.')}
+    ${k('7. gün', rate(6, 8), '6–8. günler arasında açtı.')}
+    <div class="card kpi"><div class="muted">Tek gün kalan</div><div class="v">${one}</div><div class="s">Sadece kurulum günü kullanan kişi.</div></div>
+  </div>`;
+}
+
+// Özellikler: which tabs people open, the assistant, the home screen widget and the in-app rating (all since 1.2.2).
+function featureKpis(ev) {
+  const users = name => new Set(ev.filter(e => e.name === name).map(e => e.install_id));
+  const tabs = { today: 'Bugün', plan: 'Plan', explore: 'Keşfet', health: 'Sağlık', assistant: 'Asistan' };
+  const tabUsers = Object.fromEntries(Object.keys(tabs).map(t => [t, new Set(ev.filter(e => e.name === 'tab_view' && e.props?.tab === t).map(e => e.install_id)).size]));
+  const anyTab = users('tab_view').size;
+  const widgets = {};
+  for (const e of ev) if (e.name === 'widget_state' && !(e.install_id in widgets)) widgets[e.install_id] = e.props?.kinds || 'none';
+  const withWidget = Object.values(widgets).filter(k => k !== 'none').length;
+  const scores = ev.filter(e => e.name === 'satisfaction').map(e => Number(e.props?.score)).filter(Boolean);
+  const avg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '–';
+  const k = (label, v, s) => `<div class="card kpi"><div class="muted">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  if (!anyTab && !scores.length && !Object.keys(widgets).length) return `<h2>Özellikler</h2><div class="card muted">Sekme, asistan, widget ve memnuniyet verisi 1.2.2 ile gelmeye başlayacak.</div>`;
+  return `<h2>Özellikler <span class="muted" style="font:500 14px Geist">seçili aralık, kişi sayısı</span></h2><div class="grid">
+    ${Object.entries(tabs).filter(([t]) => t !== 'today').map(([t, l]) => k(l, tabUsers[t], anyTab ? `${anyTab} kişiden, %${Math.round(100 * tabUsers[t] / anyTab)}` : '')).join('')}
+    ${k('Asistana soru', ev.filter(e => e.name === 'assistant_message').length, users('assistant_message').size + ' kişi sordu')}
+    ${k('Widget ekli', withWidget, Object.keys(widgets).length + ' kişiden')}
+    ${k('Memnuniyet', avg === '–' ? avg : avg + ' / 5', scores.length + ' kişi puan verdi')}
+  </div>`;
 }
 
 function usageKpis(ev) {
@@ -383,7 +426,7 @@ function feedbackView(ev) {
   const dogs = dogNames(ev);
   const rows = ev.filter(e => e.name === 'feedback');
   if (!rows.length) return `<h2>Öneriler</h2><div class="card muted">Henüz öneri yok.</div>`;
-  const items = rows.map(e => `<div class="item" style="display:block"><div>${esc(e.props?.text)}</div>
+  const items = rows.map(e => `<div class="item" style="display:block"><div>${e.props?.score ? `<span class="pill">${esc(e.props.score)}/5</span> ` : ''}${esc(e.props?.text)}</div>
       <div class="muted" style="font-size:12px;margin-top:4px">${esc(dogs[e.install_id] || 'İsimsiz')} · ${fmtDate(e.created_at)} · ${esc(e.install_id.slice(0, 8))}</div></div>`).join('');
   return `<h2>Öneriler <span class="muted" style="font:500 14px Geist">${rows.length}</span></h2><div class="card list">${items}</div>`;
 }
@@ -650,6 +693,12 @@ function describe(e) {
     case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(AGE[p.age] || p.age)} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
     case 'dog_photo': return 'Profil fotoğrafı yükledi';
     case 'push_token': return 'Panel bildirimlerine açık';
+    case 'tab_view': return 'Sekme: ' + esc(({ today: 'Bugün', plan: 'Plan', explore: 'Keşfet', health: 'Sağlık', assistant: 'Asistan' })[p.tab] || p.tab);
+    case 'assistant_message': return 'Asistana soru sordu';
+    case 'widget_state': return 'Widget: ' + (p.kinds === 'none' ? 'ekli değil' : esc(p.kinds));
+    case 'widget_promo': return p.action === 'open' ? 'Widget ekleme adımlarını açtı' : 'Widget kartını kapattı';
+    case 'satisfaction': return `<strong>Memnuniyet</strong>: ${esc(p.score)}/5`;
+    case 'first_lesson_auto': return 'Onboarding bitince ilk dersi otomatik açıldı';
     case 'invite_share': return p.sent === 'yes' ? `<strong>Davet gönderdi</strong> · ${esc(p.channel)} <span class="muted">(kod ${esc(p.code)})</span>` : 'Davet ekranını açıp kapattı';
     case 'invite_redeem': return `<strong>Davet koduyla geldi</strong>: ${esc(p.code)}`;
     case 'session_end': return `Uygulamadan çıktı · ${dur(Number(p.seconds))} kaldı`;
@@ -665,7 +714,7 @@ function describe(e) {
     case 'lesson_open': return 'Ders açtı: ' + esc(p.lesson);
     case 'app_active': return 'Uygulamaya döndü';
     case 'owner_profile': return `Sahip: <strong>${esc(p.owner_name || 'adsız')}</strong> · ${esc(GENDER[p.gender] || '')} ${esc(p.age || '')} · gelir ${esc(INCOME[p.income] || '–')} · bütçe ${esc(BUDGET[p.budget] || '–')}`;
-    case 'feedback': return '<strong>Öneri:</strong> ' + esc(p.text);
+    case 'feedback': return '<strong>Öneri:</strong> ' + (p.score ? `(${esc(p.score)}/5) ` : '') + esc(p.text);
     case 'health_log': return 'Kayıt: ' + esc(LOG[p.type] || p.type) + (p.minutes ? ` (${esc(p.minutes)} dk)` : '') + ` <span class="muted">${esc(p.source === 'widget' ? 'widget' : '')}</span>`;
     case 'notif_open': return 'Bildirime dokundu';
     case 'consent': return `<strong>KVKK</strong>: aydınlatma metnini okudu · profil rızası ${p.profile === 'yes' ? 'verdi' : 'vermedi'} <span class="muted">(sürüm ${esc(p.version)}, ${p.source === 'settings' ? 'Ayarlar' : 'kurulum'})</span>`;
