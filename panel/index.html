@@ -22,7 +22,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 Geist, system-ui, sans-serif; }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+.wrap { max-width: 1360px; margin: 0 auto; padding: 24px 16px 64px; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .logo { font: 32px/1 Pacifico, cursive; }
 .logo small { font: 500 13px Geist, sans-serif; color: var(--muted); margin-left: 8px; }
@@ -36,16 +36,17 @@ button, select, input { font: inherit; color: inherit; }
 .ranges button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
-.kpi .v { font: 600 30px/1.1 Geist, sans-serif; margin-top: 6px; }
+.kpi .v { font: 600 clamp(22px, 2.2vw, 30px)/1.1 Geist, sans-serif; margin-top: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kpi .s { font-size: 13px; color: var(--muted); margin-top: 4px; }
 .kpi.hl { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .kpi.hl .s { color: var(--accent-ink); opacity: .8; }
 .two { display: grid; gap: 12px; grid-template-columns: 1.4fr 1fr; }
 @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
-.funnel .row { display: grid; grid-template-columns: 150px 1fr 64px 72px; gap: 10px; align-items: center; padding: 5px 0; font-size: 14px; }
+.funnel .row { display: grid; grid-template-columns: 150px 1fr 48px 96px; gap: 10px; align-items: center; padding: 5px 0; font-size: 14px; }
 .funnel .track { background: var(--bar-soft); border-radius: 6px; height: 14px; overflow: hidden; }
 .funnel .fill { background: var(--bar); height: 100%; border-radius: 6px; }
-.funnel .drop { color: var(--bad); font-size: 12px; text-align: right; }
+.funnel .drop { color: var(--bad); font-size: 12px; text-align: right; white-space: nowrap; }
+.funnel .ok { color: var(--muted); font-size: 12px; text-align: right; white-space: nowrap; }
 .funnel .head { color: var(--muted); font-size: 12px; }
 @media (max-width: 560px) { .funnel .row { grid-template-columns: 96px 1fr 48px; } .funnel .drop { display: none; } }
 .list .item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
@@ -58,7 +59,9 @@ button, select, input { font: inherit; color: inherit; }
 .day .lbl { font-size: 10px; color: var(--muted); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td .muted { white-space: nowrap; }
+.funnel .sub { margin: 14px 0 4px; font-size: 12px; color: var(--muted); }
 tr.u { cursor: pointer; }
 tr.u:hover td { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 .scroll { overflow-x: auto; }
@@ -104,7 +107,9 @@ const STEP = {
 };
 const SURVEY = { fiyat: 'Fiyat yüksek', deneme: 'Önce denemek istiyor', emin_degil: 'Emin değil', sonra: 'Sonra alacak', diger: 'Başka sebep', gecti: 'Cevap vermedi' };
 const RESULT = { success: 'tamamlandı', cancelled: 'vazgeçti', pending: 'onay bekliyor', failed: 'hata' };
-const AGE = { puppy0to4: 'Yavru (0-4 ay)', puppy4to6: 'Yavru (4-6 ay)', adolescent: 'Ergen', adult: 'Yetişkin', senior: 'Yaşlı' };
+const AGE = { puppy0to4: 'Yavru (0-4 ay)', puppy4to6: 'Yavru (4-6 ay)', adolescent: 'Ergen', adult: 'Yetişkin', senior: 'Yaşlı',
+  puppy_0_4m: 'Yavru (0-4 ay)', puppy_4_6m: 'Yavru (4-6 ay)', adolescent_6_18m: 'Ergen (6-18 ay)', adult_18m_7y: 'Yetişkin', senior_7y: 'Yaşlı' };
+const ageLabel = a => AGE[a] || (/^puppy/.test(a || '') ? 'Yavru' : /^adolescent/.test(a || '') ? 'Ergen' : /^adult/.test(a || '') ? 'Yetişkin' : /^senior/.test(a || '') ? 'Yaşlı' : (a || ''));
 
 function localGet(k) { try { return localStorage.getItem('uslu-panel-' + k); } catch { return null; } }
 function localSet(k, v) { try { localStorage.setItem('uslu-panel-' + k, v); } catch {} }
@@ -163,14 +168,16 @@ async function load() {
   const body = document.getElementById('body');
   const b = bounds();
   try {
-    const [o, funnel, drop, daily, users, usage] = await Promise.all([
-      rpc('panel_overview', b), rpc('panel_funnel', b), rpc('panel_dropoff', b), rpc('panel_daily', b),
-      rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b)
+    const [o, daily, users, usage, obEv] = await Promise.all([
+      rpc('panel_overview', b), rpc('panel_daily', b), rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b), obEvents(b)
     ]);
+    const ob = onboarding(obEv);
+    o.onboarding_started = ob.started; o.onboarding_done = ob.done;
+    const drop = ob.drop;
     const invites = await inviteEvents();
     // Uslu is free since 1.2.0: the panel shows usage only
     body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + retentionKpis(users, usage) + featureKpis(usage) + onboardingKpis(o)
-      + `<div class="two"><div>${funnelView(funnel, o)}</div><div>${dropView(drop)}</div></div>`
+      + `<div class="two"><div>${funnelView(ob)}</div><div>${dropView(drop, ob)}</div></div>`
       + usersView(users, usage, invites) + inviteView(users, usage, invites) + feedbackView(usage)
       + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
       + ownersView(usage) + dailyView(daily);
@@ -324,10 +331,10 @@ function usageKpis(ev) {
   const walks = ev.filter(e => e.name === 'health_log' && e.props?.type === 'walk');
   const k = (label, v, s) => `<div class="card kpi"><div class="muted">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   return `<h2>Kullanım</h2><div class="grid">
-    ${k('Bugün aktif', since(86400_000), 'son 24 saatte açan kişi')}
-    ${k('Haftalık aktif', since(7 * 86400_000), 'son 7 günde açan kişi')}
+    ${k('Son 24 saat', since(86400_000), 'bu sürede açan kişi')}
+    ${k('Son 7 gün', since(7 * 86400_000), 'bu sürede açan kişi')}
     ${k('Seçili aralıkta aktif', new Set(opens.map(e => e.install_id)).size, opens.length + ' açılış')}
-    ${k('Kayıt girilen', ev.filter(e => e.name === 'health_log').length, walks.length + ' yürüyüş, ' + new Set(walks.map(e => e.install_id)).size + ' kişi')}
+    ${k('Kayıt girilen', ev.filter(e => e.name === 'health_log').length, new Set(ev.filter(e => e.name === 'health_log').map(e => e.install_id)).size + ' kişi girdi · ' + walks.length + ' yürüyüş')}
     ${k('Açılan bildirim', ev.filter(e => e.name === 'notif_open').length, new Set(ev.filter(e => e.name === 'notif_open').map(e => e.install_id)).size + ' kişi')}
     ${(() => { const s = ev.filter(e => e.name === 'session_end').map(e => Number(e.props?.seconds || 0)); const t = s.reduce((a, b) => a + b, 0);
        return k('Uslu’da geçen süre', dur(t), s.length ? `${s.length} ziyaret, ortalama ${dur(t / s.length)}` : 'süre 1.2.0 ile ölçülüyor'); })()}
@@ -531,37 +538,101 @@ function onboardingKpis(o) {
 }
 
 
-function funnelView(rows, o) {
-  if (!rows.length) return `<h2>Onboarding hunisi</h2><div class="card muted">Henüz veri yok.</div>`;
-  const top = Math.max(...rows.map(r => r.reached));
-  const all = rows;
-  let prev = null;
-  const lines = all.map(r => {
-    const label = r.step === '__paywall' ? 'Ödeme ekranı' : r.step === '__bought' ? 'Abone' : (STEP[r.step] || r.step);
-    const drop = prev ? Math.round((1 - r.reached / Math.max(prev, 1)) * 100) : 0;
-    prev = r.reached;
-    const secs = r.median_seconds != null ? Math.round(r.median_seconds) + ' sn' : '';
-    return `<div class="row"><div>${esc(label)}</div><div class="track"><div class="fill" style="width:${top ? r.reached * 100 / top : 0}%"></div></div>
-      <div style="text-align:right;font-variant-numeric:tabular-nums">${r.reached}</div><div class="drop">${drop > 0 ? '−' + drop + '%' : ''} <span class="muted">${secs}</span></div></div>`;
-  }).join('');
-  return `<h2>Onboarding hunisi</h2><div class="card funnel"><div class="row head"><div>Adım</div><div>Ulaşan kişi</div><div style="text-align:right">Kişi</div><div style="text-align:right">Kayıp · süre</div></div>${lines}</div>`;
+// The app's step order (OnboardingModel.steps). Steps in OPTIONAL are not shown to everyone: some depend on the answers
+// (frequency, growling, safety, meal and outing times), the owner questions and the invite code came with 1.2.x, and
+// "story" was dropped. The funnel counts everyone who got at least as far as a step, so the numbers only go down and the
+// losses add up to the "nerede bırakıyorlar" list. Going back a step or reopening the app does not move anyone backwards.
+const FLOW = ['welcome', 'name', 'photo', 'age', 'insightAge', 'breed', 'arrival', 'origin', 'home', 'household', 'problems',
+  'frequency', 'redFlag', 'safety', 'insightMethod', 'goal', 'minutes', 'insightShort', 'meals', 'outings', 'routine', 'rewards',
+  'microchip', 'ownerName', 'ownerPhoto', 'ownerGender', 'ownerAge', 'ownerIncome', 'ownerBudget', 'insightOwner', 'inviteCode',
+  'story', 'building', 'summary', 'notifications'];
+const OPTIONAL = new Set(['frequency', 'redFlag', 'safety', 'meals', 'outings', 'ownerName', 'ownerPhoto', 'ownerGender', 'ownerAge',
+  'ownerIncome', 'ownerBudget', 'inviteCode', 'story']);
+
+async function obEvents(b) {
+  const all = [];
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data, error } = await sb.from('events').select('install_id,name,props,created_at')
+      .in('name', ['ob_step', 'ob_complete']).gte('created_at', b.p_from).lt('created_at', b.p_to)
+      .order('created_at', { ascending: true }).range(from, from + 999);
+    if (error) throw new Error(error.message);
+    all.push(...data);
+    if (data.length < 1000) break;
+  }
+  return all;
 }
 
-function dropView(rows) {
-  // the step where people closed the app and never came back, most first
+function onboarding(ev) {
+  const pos = Object.fromEntries(FLOW.map((s, i) => [s, i]));
+  const per = {};
+  for (const e of ev) {
+    const x = per[e.install_id] || (per[e.install_id] = { far: -1, done: false, seen: new Set(), seq: [] });
+    const t = new Date(e.created_at).getTime();
+    if (e.name === 'ob_complete') { x.done = true; x.seq.push(['__done', t]); continue; }
+    const st = e.props?.step;
+    if (!st) continue;
+    x.seen.add(st); x.seq.push([st, t]);
+    if ((pos[st] ?? -1) > x.far) x.far = pos[st] ?? x.far;
+  }
+  const people = Object.values(per);
+  // time spent on a step: until the next step event of the same person, ignoring gaps over 30 minutes
+  const secs = {};
+  for (const x of people) for (let i = 0; i + 1 < x.seq.length; i++) {
+    const d = (x.seq[i + 1][1] - x.seq[i][1]) / 1000;
+    if (x.seq[i][0] !== '__done' && d >= 0 && d < 1800) (secs[x.seq[i][0]] ||= []).push(d);
+  }
+  const median = a => { if (!a?.length) return null; const v = [...a].sort((p, q) => p - q); return v[Math.floor(v.length / 2)]; };
+  const got = i => people.filter(x => x.done || x.far >= i).length;
+  const main = FLOW.filter(st => !OPTIONAL.has(st)).map(st => ({ step: st, reached: got(pos[st]), secs: median(secs[st]) }))
+    .filter(r => r.reached > 0);
+  const extra = FLOW.filter(st => OPTIONAL.has(st)).map(st => {
+    const seen = people.filter(x => x.seen.has(st));
+    return { step: st, seen: seen.length, passed: seen.filter(x => x.done || x.far > pos[st]).length, secs: median(secs[st]) };
+  }).filter(r => r.seen > 0);
+  const left = {};
+  for (const x of people) if (!x.done) { const st = FLOW[x.far] || '?'; left[st] = (left[st] || 0) + 1; }
+  const drop = Object.entries(left).map(([step, installs]) => ({ step, installs })).sort((a, b) => b.installs - a.installs);
+  return { started: people.length, done: people.filter(x => x.done).length, main, extra, drop };
+}
+
+function funnelView(ob) {
+  if (!ob.main.length) return `<h2>Onboarding hunisi</h2><div class="card muted">Henüz veri yok.</div>`;
+  const top = ob.started || 1;
+  let prev = null;
+  const sec = v => v == null ? '' : v < 60 ? Math.round(v) + ' sn' : Math.round(v / 60) + ' dk';
+  const lines = ob.main.map(r => {
+    const lost = prev == null ? 0 : prev - r.reached;
+    const d = prev ? Math.round(lost * 100 / prev) : 0;
+    prev = r.reached;
+    return `<div class="row"><div>${esc(STEP[r.step] || r.step)}</div><div class="track"><div class="fill" style="width:${r.reached * 100 / top}%"></div></div>
+      <div style="text-align:right;font-variant-numeric:tabular-nums">${r.reached}</div>
+      <div class="drop">${lost > 0 ? `−${lost} (%${d})` : ''} <span class="muted">${sec(r.secs)}</span></div></div>`;
+  }).join('');
+  const extra = ob.extra.map(r => `<div class="row"><div>${esc(STEP[r.step] || r.step)}</div><div class="track"><div class="fill" style="width:${r.seen * 100 / top}%;opacity:.45"></div></div>
+      <div style="text-align:right;font-variant-numeric:tabular-nums">${r.seen}</div>
+      <div class="ok">%${Math.round(r.passed * 100 / r.seen)} geçti <span class="muted">${sec(r.secs)}</span></div></div>`).join('');
+  return `<h2>Onboarding hunisi <span class="muted" style="font:500 14px Geist">${ob.started} başlayan · ${ob.done} biten</span></h2>
+    <div class="card funnel"><div class="row head"><div>Adım</div><div>Bu adıma gelen</div><div style="text-align:right">Kişi</div><div style="text-align:right">Kayıp · süre</div></div>${lines}
+    ${extra ? `<div class="sub">Herkese sorulmayan adımlar (cevaba ya da sürüme göre çıkar). Sayı, adımı gören kişidir.</div>${extra}` : ''}</div>`;
+}
+
+function dropView(rows, ob) {
+  // the furthest step of everyone who has not finished onboarding; adds up to the funnel's losses
+  const total = rows.reduce((a, r) => a + r.installs, 0);
   const items = rows.length ? rows.map(r => `<div class="item"><span>${esc(STEP[r.step] || r.step)}</span><strong>${r.installs}</strong></div>`).join('') : '<p class="muted">Takılan yok.</p>';
-  return `<h2>En çok nerede bırakıyorlar?</h2><div class="card list">${items}</div>`;
+  return `<h2>En çok nerede bırakıyorlar? <span class="muted" style="font:500 14px Geist">${total} kişi</span></h2><div class="card list">${items}
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Bitirmeyen herkesin gelebildiği en son adım. Toplam, hunideki kayıpların toplamına eşittir.</p></div>`;
 }
 
 
 function dailyView(rows) {
   if (!rows.length) return '';
   const max = Math.max(1, ...rows.map(r => Number(r.installs)));
-  const bars = rows.map(r => `<div class="day" title="${r.day}: ${r.installs} kurulum, ${r.paywall_viewed} ödeme ekranı, ${r.purchased} abone">
-      <div class="b" style="height:${Number(r.installs) * 100 / max}%;background:var(--bar-soft)"></div>
-      <div class="b paid" style="height:calc((100% - 16px) * ${Number(r.purchased) / max});background:var(--good)"></div>
+  const total = rows.reduce((a, r) => a + Number(r.installs), 0);
+  const bars = rows.map(r => `<div class="day" title="${r.day}: ${r.installs} kurulum">
+      <div class="b" style="height:${Number(r.installs) * 100 / max}%;background:var(--bar)"></div>
       <div class="lbl">${r.day.slice(8, 10)}</div></div>`).join('');
-  return `<h2>Günlük kurulum ve abonelik</h2><div class="card"><div class="days">${bars}</div><p class="muted" style="font-size:12px;margin:8px 0 0">Gri: kurulum · Yeşil: abone</p></div>`;
+  return `<h2>Günlük kurulum <span class="muted" style="font:500 14px Geist">${total} kurulum, günde ortalama ${(total / rows.length).toFixed(1)}</span></h2><div class="card"><div class="days">${bars}</div></div>`;
 }
 
 
@@ -611,7 +682,7 @@ function usersView(users, usage = [], invites = []) {
     const live = x.last && Date.now() - new Date(x.last) < 86400_000;
     return `<tr class="u" data-id="${u.install_id}">
       <td><span class="avatar" data-photo="${esc(u.photo_path || '')}">${esc((u.dog_name || '?').slice(0, 1).toUpperCase())}</span></td>
-      <td><strong>${esc(u.dog_name || 'İsimsiz')}</strong><div class="muted" style="font-size:12px">${esc(AGE[u.dog_age] || u.dog_age || '')}</div></td>
+      <td><strong>${esc(u.dog_name || 'İsimsiz')}</strong><div class="muted" style="font-size:12px">${esc(ageLabel(u.dog_age))}</div></td>
       <td>${esc(o.owner_name || '–')}<div class="muted" style="font-size:12px">${esc([GENDER[o.gender], o.age].filter(v => v && v !== '–').join(' · '))}</div></td>
       <td><span class="pill ${live ? 'good' : ''}">${ago(x.last)}</span></td>
       <td>${x.opens || 0}</td>
@@ -690,7 +761,7 @@ function describe(e) {
     case 'notif_result': return 'Bildirim izni: ' + ({ true: 'verdi', false: 'vermedi', skipped: '“Şimdi değil”' }[p.granted] || p.granted);
     case 'att_result': return 'Takip izni: ' + ({ authorized: 'verdi', denied: 'vermedi' }[p.status] || p.status);
     case 'ob_complete': return '<strong>Onboarding\'i bitirdi</strong>';
-    case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(AGE[p.age] || p.age)} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
+    case 'dog_profile': return `Köpek: <strong>${esc(p.name)}</strong> · ${esc(ageLabel(p.age))} · ${esc(p.breed)}${p.problems ? ' · ' + esc(p.problems) : ''}`;
     case 'dog_photo': return 'Profil fotoğrafı yükledi';
     case 'push_token': return 'Panel bildirimlerine açık';
     case 'tab_view': return 'Sekme: ' + esc(({ today: 'Bugün', plan: 'Plan', explore: 'Keşfet', health: 'Sağlık', assistant: 'Asistan' })[p.tab] || p.tab);
@@ -742,7 +813,7 @@ async function openUser(u) {
     <div style="display:flex;gap:16px;align-items:center;margin-top:16px">
       ${photo ? `<img class="big-photo" src="${photo}" alt="">` : `<span class="avatar" style="width:72px;height:72px;font-size:28px">${esc((u.dog_name || '?').slice(0, 1))}</span>`}
       <div><div style="font:400 30px/1.1 'Instrument Serif',serif">${esc(u.dog_name || 'İsimsiz')}</div>
-        <div class="muted">${esc(AGE[u.dog_age] || '')} ${u.dog_problems ? '· ' + esc(u.dog_problems) : ''}</div>
+        <div class="muted">${esc(ageLabel(u.dog_age))} ${u.dog_problems ? '· ' + esc(u.dog_problems) : ''}</div>
         <div style="margin-top:6px">${statusPill(u)}</div></div>
     </div>
     ${(() => { const o = events.find(e => e.name === 'owner_profile')?.props; return o ? `<p style="margin:12px 0 0">${ownerPhoto ? `<img class="avatar" src="${ownerPhoto}" alt="" style="vertical-align:middle;margin-right:8px">` : ''}Sahip: <strong>${esc(o.owner_name || 'adsız')}</strong> · ${esc(GENDER[o.gender] || '')} ${esc(o.age || '')} · gelir ${esc(INCOME[o.income] || '–')} · köpek bütçesi ${esc(BUDGET[o.budget] || '–')} TL</p>` : ''; })()}
