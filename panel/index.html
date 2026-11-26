@@ -172,6 +172,7 @@ async function load() {
     let [o, daily, users, usage, obEv] = await Promise.all([
       rpc('panel_overview', b), rpc('panel_daily', b), rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b), obEvents(b)
     ]);
+    let invites = await inviteEvents();
     const live = await liveVersion();
     const tests = testInstalls(users, usage, obEv, live);
     const check = dataCheck(users, usage, obEv, o, tests, live);
@@ -187,7 +188,6 @@ async function load() {
     const ob = onboarding(obEv);
     o.onboarding_started = ob.started; o.onboarding_done = ob.done;
     const drop = ob.drop;
-    let invites = await inviteEvents();
     // Uslu is free since 1.2.0: the panel shows usage only
     body.innerHTML = checkBanner(check) + liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + retentionKpis(users, usage) + featureKpis(usage) + onboardingKpis(o)
       + `<div class="two"><div>${funnelView(ob)}</div><div>${dropView(drop, ob)}</div></div>`
