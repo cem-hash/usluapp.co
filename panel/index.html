@@ -169,20 +169,33 @@ async function load() {
   const body = document.getElementById('body');
   const b = bounds();
   try {
-    const [o, daily, users, usage, obEv] = await Promise.all([
+    let [o, daily, users, usage, obEv] = await Promise.all([
       rpc('panel_overview', b), rpc('panel_daily', b), rpc('panel_users', { ...b, p_limit: 300 }), usageEvents(b), obEvents(b)
     ]);
+    const live = await liveVersion();
+    const tests = testInstalls(users, usage, obEv, live);
+    const check = dataCheck(users, usage, obEv, o, tests, live);
+    if (!showTests) {
+      const keep = e => !tests[e.install_id];
+      const gone = users.filter(u => tests[u.install_id]);
+      users = users.filter(keep); usage = usage.filter(keep); obEv = obEv.filter(keep); invites = invites.filter(keep);
+      o.installs = Math.max(0, o.installs - gone.length);
+      const perDay = {};
+      for (const u of gone) if (u.first_seen) { const d = u.first_seen.slice(0, 10); perDay[d] = (perDay[d] || 0) + 1; }
+      daily = daily.map(r => ({ ...r, installs: Math.max(0, Number(r.installs) - (perDay[r.day] || 0)) }));
+    }
     const ob = onboarding(obEv);
     o.onboarding_started = ob.started; o.onboarding_done = ob.done;
     const drop = ob.drop;
-    const invites = await inviteEvents();
+    let invites = await inviteEvents();
     // Uslu is free since 1.2.0: the panel shows usage only
-    body.innerHTML = liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + retentionKpis(users, usage) + featureKpis(usage) + onboardingKpis(o)
+    body.innerHTML = checkBanner(check) + liveView(await todayEvents(), users) + summaryView(insights(usage, o, drop)) + pushView(users, usage) + usageKpis(usage) + retentionKpis(users, usage) + featureKpis(usage) + onboardingKpis(o)
       + `<div class="two"><div>${funnelView(ob)}</div><div>${dropView(drop, ob)}</div></div>`
       + usersView(users, usage, invites) + inviteView(users, usage, invites) + feedbackView(usage)
       + `<div class="two"><div>${hoursView(usage, 'walk')}</div><div>${hoursView(usage, 'notif')}</div></div>`
-      + ownersView(usage) + dailyView(daily);
+      + ownersView(usage) + dailyView(daily) + checkView(check);
     bindSummary();
+    bindCheck();
     bindPush();
     startLive(users);
     await fillPhotos(users);
@@ -553,7 +566,7 @@ const OPTIONAL = new Set(['frequency', 'redFlag', 'safety', 'meals', 'outings', 
 async function obEvents(b) {
   const all = [];
   for (let from = 0; from < 50000; from += 1000) {
-    const { data, error } = await sb.from('events').select('install_id,name,props,created_at')
+    const { data, error } = await sb.from('events').select('install_id,name,props,created_at,app_version')
       .in('name', ['ob_step', 'ob_complete']).gte('created_at', b.p_from).lt('created_at', b.p_to)
       .order('created_at', { ascending: true }).range(from, from + 999);
     if (error) throw new Error(error.message);
@@ -655,7 +668,7 @@ function activity(usage) {
     else if (e.name === 'notif_open') x.notifs++;
     else if (e.name === 'owner_profile' && !x.owner) x.owner = e.props || {};
     else if (e.name === 'feedback') x.feedback++;
-    else if (e.name === 'consent' && !x.consent) x.consent = e.props || {};
+    else if (e.name === 'consent' && (!x.consent || (e.props?.profile === 'yes' && Math.abs(new Date(e.created_at) - new Date(x.consentAt)) < 10_000))) { x.consent = e.props || {}; x.consentAt = e.created_at; }
     else if (e.name === 'owner_photo' && !x.ownerPhoto) x.ownerPhoto = e.props?.path;
   }
   return a;
@@ -693,7 +706,7 @@ function usersView(users, usage = [], invites = []) {
       <td>${x.logs || 0}</td>
       <td>${x.notifs || 0}</td>
       <td style="white-space:nowrap">${inviteCell(inv[u.install_id])}</td>
-      <td>${consentPill(x.consent)}</td>
+      <td>${!x.consent && older(u.app_version, '1.2.0') ? '<span class="pill" title="KVKK ekranı 1.2.0 ile geldi">Sorulmadı</span>' : consentPill(x.consent)}</td>
       <td>${u.onboarding_done ? '✓' : u.steps_done + ' adım'}</td>
       <td class="muted">${fmtDate(u.first_seen)}</td></tr>`; }).join('');
   return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi · satıra tıkla, tüm geçmişi gör</span></h2>
@@ -738,6 +751,99 @@ function bindPush() {
     msg.textContent = `${data.sent} kişiye gitti` + (data.failed ? `, ${data.failed} gitmedi (${why})` : '') + '.';
   };
   ['pTarget', 'pTitle', 'pBody'].forEach(id => document.getElementById(id).oninput = () => { armed = false; btn.textContent = 'Gönder'; msg.textContent = ''; });
+}
+
+// ---- Veri kontrolü: test and review installs, and numbers that do not add up, with the reason.
+let showTests = localGet('tests') === '1';
+// Install id prefixes of the team's own phones, as "reason". Add one here when someone on the team tests on a new phone.
+const TEAM = { '8de386a2': 'Ekip testi (Demo)' };
+
+async function liveVersion() {
+  try {
+    const j = await (await fetch('https://itunes.apple.com/lookup?id=6826392423&country=tr')).json();
+    const x = j.results?.[0];
+    return x ? { version: x.version, date: x.currentVersionReleaseDate } : null;
+  } catch { return null; }
+}
+
+function older(v, than) {
+  const a = String(v || '').split(' ')[0].split('.').map(Number), b = than.split('.').map(Number);
+  if (!a[0] && a[0] !== 0 || isNaN(a[0])) return false;
+  for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) < (b[i] || 0); }
+  return false;
+}
+
+// Apple's review devices report "iPhone99,…"; an install whose first version is the live one but which opened before
+// that version's release date came from TestFlight, Xcode or App Review.
+function testInstalls(users, usage, obEv, live) {
+  const firstVer = {}, firstAt = {}, devs = {};
+  for (const e of obEv) if (!(e.install_id in firstVer)) { firstVer[e.install_id] = String(e.app_version || '').split(' ')[0]; firstAt[e.install_id] = e.created_at; }
+  for (const e of usage) if (e.device) (devs[e.install_id] ||= new Set()).add(e.device);
+  const out = {};
+  for (const u of users) {
+    const id = u.install_id, d = [...(devs[id] || []), u.device || ''];
+    let why = TEAM[id.slice(0, 8)] || null;
+    if (!why && d.some(x => /^iPhone99,/.test(x))) why = 'Apple incelemesi';
+    if (!why && live && firstVer[id] === live.version && firstAt[id] < live.date) why = `${live.version} yayına çıkmadan açılmış (TestFlight, Xcode ya da inceleme)`;
+    if (why) out[id] = why;
+  }
+  return out;
+}
+
+function dataCheck(users, usage, obEv, o, tests, live) {
+  const items = [];
+  const name = u => esc(u.dog_name || 'İsimsiz') + ` <span class="muted">${esc(u.install_id.slice(0, 8))}</span>`;
+  const testUsers = users.filter(u => tests[u.install_id]);
+  items.push({ level: testUsers.length ? 'warn' : 'ok', title: `${testUsers.length} test ve inceleme kurulumu`,
+    text: showTests ? 'Şu an sayılara dahil.' : 'Bütün sayılardan çıkarıldı.',
+    list: testUsers.map(u => `${name(u)} · ${esc(tests[u.install_id])}`) });
+  const noFirst = users.filter(u => !tests[u.install_id]).length - Math.max(0, o.installs - testUsers.length);
+  if (noFirst > 0) items.push({ level: 'info', title: `${noFirst} kişinin "ilk açılış" kaydı yok`,
+    text: 'Bu kişiler Kullanıcılar listesinde var, Kurulum sayısında yok. Uygulama ilk açılış kaydı gönderilmeden kapanmış ya da kayıt seçili aralıktan önce gelmiş.' });
+  const old = users.filter(u => !tests[u.install_id] && older(u.app_version, '1.2.0'));
+  if (old.length) items.push({ level: 'info', title: `${old.length} kişi hâlâ 1.2.0'dan eski sürümde`,
+    text: 'Bu sürümler süre, telefon modeli ve KVKK onayı göndermiyordu. Tabloda bu kişilerde süre "–", telefon "iPhone", KVKK "Sorulmadı" görünür; bu bir hata değil.' });
+  const cons = {};
+  for (const e of usage) if (e.name === 'consent') (cons[e.install_id] ||= []).push(e);
+  const twice = Object.entries(cons).filter(([, a]) => a.some(e => e.props?.profile === 'yes') && a.some(e => e.props?.profile === 'no'))
+    .map(([id]) => users.find(u => u.install_id === id)).filter(Boolean);
+  if (twice.length) items.push({ level: 'warn', title: `${twice.length} kişide KVKK cevabı iki kez gelmiş (biri evet, biri hayır)`,
+    text: "1.2.0'daki çift onay ekranı hatası. Panel, aynı anda gelen “evet” cevabını esas alıyor. Hata 1.2.2'de giderildi.",
+    list: twice.map(name) });
+  const doneNoDog = users.filter(u => !tests[u.install_id] && u.onboarding_done && !u.dog_name);
+  if (doneNoDog.length) items.push({ level: 'info', title: `${doneNoDog.length} kişi onboarding'i bitirmiş ama köpek bilgisi gelmemiş`,
+    text: 'Köpek profili kaydı gönderilmeden uygulama kapanmış. Bu kişiler listede "İsimsiz" görünür.', list: doneNoDog.map(name) });
+  const key = {};
+  for (const u of users) if (!tests[u.install_id] && u.dog_name && u.device && !['iphone', 'ipad'].includes(u.device))
+    (key[u.dog_name.toLocaleLowerCase('tr') + '|' + u.device] ||= []).push(u);
+  const dup = Object.values(key).filter(a => a.length > 1);
+  if (dup.length) items.push({ level: 'info', title: `${dup.length} olası yeniden kurulum`,
+    text: 'Aynı köpek adı ve aynı telefon modeli birden fazla kurulumda geçiyor. Büyük ihtimalle aynı kişi uygulamayı silip yeniden yüklemiş; kurulum sayısı bu kadar fazla görünür.',
+    list: dup.map(a => a.map(name).join(' · ') + ` · ${esc(phone(a[0].device))}`) });
+  if (live) items.push({ level: 'ok', title: `App Store'daki sürüm ${esc(live.version)}`,
+    text: `${new Date(live.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} tarihinde yayına çıktı.` });
+  return items;
+}
+
+function checkBanner(items) {
+  const warn = items.filter(i => i.level === 'warn').length;
+  return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <span>${warn ? `<span class="pill warn">${warn} uyarı</span> ` : '<span class="pill good">Veri tutarlı</span> '}<span class="muted">Test kurulumları ${showTests ? 'dahil' : 'hariç'}.</span>
+    <a href="#check" style="color:inherit">Veri kontrolünü gör</a></span>
+    <button class="btn ghost" id="testsBtn">${showTests ? 'Test kurulumlarını çıkar' : 'Test kurulumlarını dahil et'}</button></div>`;
+}
+
+function checkView(items) {
+  const dot = { warn: 'warn', info: '', ok: 'good' };
+  const rows = items.map(i => `<div class="item" style="display:block"><div><span class="pill ${dot[i.level]}">${i.level === 'warn' ? 'Uyarı' : i.level === 'ok' ? 'Tamam' : 'Bilgi'}</span> <strong>${i.title}</strong></div>
+      <div class="muted" style="font-size:13px;margin-top:4px">${i.text}</div>
+      ${i.list?.length ? `<div style="font-size:13px;margin-top:6px;line-height:1.7">${i.list.join('<br>')}</div>` : ''}</div>`).join('');
+  return `<h2 id="check">Veri kontrolü</h2><div class="card list">${rows}</div>`;
+}
+
+function bindCheck() {
+  const b = document.getElementById('testsBtn');
+  if (b) b.onclick = () => { showTests = !showTests; localSet('tests', showTests ? '1' : '0'); load(); };
 }
 
 async function signedUrl(path) {
