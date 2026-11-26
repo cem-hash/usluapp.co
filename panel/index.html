@@ -668,8 +668,14 @@ function activity(usage) {
     else if (e.name === 'notif_open') x.notifs++;
     else if (e.name === 'owner_profile' && !x.owner) x.owner = e.props || {};
     else if (e.name === 'feedback') x.feedback++;
-    else if (e.name === 'consent' && (!x.consent || (e.props?.profile === 'yes' && Math.abs(new Date(e.created_at) - new Date(x.consentAt)) < 10_000))) { x.consent = e.props || {}; x.consentAt = e.created_at; }
+    else if (e.name === 'consent') (x.consents ||= []).push(e);
     else if (e.name === 'owner_photo' && !x.ownerPhoto) x.ownerPhoto = e.props?.path;
+  }
+  // newest answer counts; when 1.2.0 asked twice in the same moment, a "yes" counts only if the owner profile was really sent
+  for (const x of Object.values(a)) if (x.consents?.length) {
+    const t0 = new Date(x.consents[0].created_at);
+    const yes = x.consents.find(e => e.props?.profile === 'yes' && Math.abs(new Date(e.created_at) - t0) < 10_000);
+    x.consent = (x.owner && yes ? yes : x.consents[0]).props || {};
   }
   return a;
 }
@@ -706,7 +712,7 @@ function usersView(users, usage = [], invites = []) {
       <td>${x.logs || 0}</td>
       <td>${x.notifs || 0}</td>
       <td style="white-space:nowrap">${inviteCell(inv[u.install_id])}</td>
-      <td>${!x.consent && older(u.app_version, '1.2.0') ? '<span class="pill" title="KVKK ekranı 1.2.0 ile geldi">Sorulmadı</span>' : consentPill(x.consent)}</td>
+      <td>${x.consent ? consentPill(x.consent) : older(u.app_version, '1.2.0') ? '<span class="pill" title="KVKK ekranı 1.2.0 ile geldi">Sorulmadı</span>' : !u.onboarding_done ? '<span class="muted" title="KVKK onboarding sonunda soruluyor">–</span>' : consentPill(null)}</td>
       <td>${u.onboarding_done ? '✓' : u.steps_done + ' adım'}</td>
       <td class="muted">${fmtDate(u.first_seen)}</td></tr>`; }).join('');
   return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi · satıra tıkla, tüm geçmişi gör</span></h2>
@@ -756,7 +762,7 @@ function bindPush() {
 // ---- Veri kontrolü: test and review installs, and numbers that do not add up, with the reason.
 let showTests = localGet('tests') === '1';
 // Install id prefixes of the team's own phones, as "reason". Add one here when someone on the team tests on a new phone.
-const TEAM = { '8de386a2': 'Ekip testi (Demo)' };
+const TEAM = { '8de386a2': 'Ekip testi (Demo)', 'e61ea1c4': 'Simülatör testi' };
 
 async function liveVersion() {
   try {
@@ -808,7 +814,7 @@ function dataCheck(users, usage, obEv, o, tests, live) {
   const twice = Object.entries(cons).filter(([, a]) => a.some(e => e.props?.profile === 'yes') && a.some(e => e.props?.profile === 'no'))
     .map(([id]) => users.find(u => u.install_id === id)).filter(Boolean);
   if (twice.length) items.push({ level: 'warn', title: `${twice.length} kişide KVKK cevabı iki kez gelmiş (biri evet, biri hayır)`,
-    text: "1.2.0'daki çift onay ekranı hatası. Panel, aynı anda gelen “evet” cevabını esas alıyor. Hata 1.2.2'de giderildi.",
+    text: "1.2.0'daki çift onay ekranı hatası. Sahip bilgisi gönderildiyse “evet”, gönderilmediyse son cevap esas alınıyor. Hata 1.2.2'de giderildi.",
     list: twice.map(name) });
   const doneNoDog = users.filter(u => !tests[u.install_id] && u.onboarding_done && !u.dog_name);
   if (doneNoDog.length) items.push({ level: 'info', title: `${doneNoDog.length} kişi onboarding'i bitirmiş ama köpek bilgisi gelmemiş`,
