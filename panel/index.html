@@ -38,6 +38,7 @@ button, select, input { font: inherit; color: inherit; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
 .kpi .v { font: 600 clamp(22px, 2.2vw, 30px)/1.1 Geist, sans-serif; margin-top: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kpi .s { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.kpi > .muted:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi.hl { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .kpi.hl .s { color: var(--accent-ink); opacity: .8; }
 .two { display: grid; gap: 12px; grid-template-columns: 1.4fr 1fr; }
@@ -58,8 +59,8 @@ button, select, input { font: inherit; color: inherit; }
 .day .lbl { position: absolute; bottom: 0; }
 .day .lbl { font-size: 10px; color: var(--muted); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; }
 td .muted { white-space: nowrap; }
 .funnel .sub { margin: 14px 0 4px; font-size: 12px; color: var(--muted); }
 tr.u { cursor: pointer; }
@@ -397,7 +398,7 @@ function inviteStats(invites) {
 
 function inviteCell(st) {
   if (!st) return '<span class="muted">–</span>';
-  return `${st.sends} gönderim · ${st.clicks} tık · ${st.installs} kurulum`;
+  return `<span title="gönderim · tıklama · kurulum">${st.sends} · ${st.clicks} · ${st.installs}</span>`;
 }
 
 function inviteView(users, usage, invites) {
@@ -531,8 +532,8 @@ function onboardingKpis(o) {
   const k = (label, v, s, hl) => `<div class="card kpi ${hl ? 'hl' : ''}"><div class="muted" style="${hl ? 'color:inherit' : ''}">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   return `<h2>Onboarding</h2><div class="grid">
     ${k('Kurulum', o.installs, 'uygulamayı ilk kez açan')}
-    ${k('Onboarding başlayan', o.onboarding_started, pct(o.onboarding_started, o.installs) + ' kurulumların')}
-    ${k('Onboarding biten', o.onboarding_done, o.onboarding_started - o.onboarding_done + ' kişi yarıda bıraktı')}
+    ${k('Başlayan', o.onboarding_started, pct(o.onboarding_started, o.installs) + ' kurulumların')}
+    ${k('Biten', o.onboarding_done, o.onboarding_started - o.onboarding_done + ' kişi yarıda bıraktı')}
     ${k('Tamamlama oranı', pct(o.onboarding_done, o.onboarding_started), 'başlayanların bitirenleri', true)}
   </div>`;
 }
@@ -579,7 +580,7 @@ function onboarding(ev) {
   const secs = {};
   for (const x of people) for (let i = 0; i + 1 < x.seq.length; i++) {
     const d = (x.seq[i + 1][1] - x.seq[i][1]) / 1000;
-    if (x.seq[i][0] !== '__done' && d >= 0 && d < 1800) (secs[x.seq[i][0]] ||= []).push(d);
+    if (x.seq[i][0] !== '__done' && d >= 1 && d < 1800) (secs[x.seq[i][0]] ||= []).push(d);
   }
   const median = a => { if (!a?.length) return null; const v = [...a].sort((p, q) => p - q); return v[Math.floor(v.length / 2)]; };
   const got = i => people.filter(x => x.done || x.far >= i).length;
@@ -696,7 +697,7 @@ function usersView(users, usage = [], invites = []) {
       <td>${u.onboarding_done ? '✓' : u.steps_done + ' adım'}</td>
       <td class="muted">${fmtDate(u.first_seen)}</td></tr>`; }).join('');
   return `<h2>Kullanıcılar <span class="muted" style="font:500 14px Geist">${users.length} kişi · satıra tıkla, tüm geçmişi gör</span></h2>
-    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Süre</th><th>Telefon</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th>Davet</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
+    <div class="card scroll"><table><tr><th></th><th>Köpek</th><th>Sahip</th><th>Son aktif</th><th>Açılış</th><th>Süre</th><th>Telefon</th><th>Yürüyüş</th><th>Diğer kayıt</th><th>Bildirim</th><th title="gönderim · tıklama · kurulum">Davet</th><th>KVKK</th><th>Onboarding</th><th>İlk açılış</th></tr>${tr}</table></div>`;
 }
 
 // Bildirim gönder: the send-push function (analytics/functions/send-push) delivers through Apple's push service.
